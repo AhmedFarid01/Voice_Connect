@@ -4,7 +4,7 @@ import { setupAuth } from "./auth";
 import { setupSocket } from "./socket";
 import { db } from "@db";
 import { users, calls, contacts } from "@db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, or } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
