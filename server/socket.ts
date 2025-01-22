@@ -162,6 +162,23 @@ export function setupSocket(server: HTTPServer) {
           return;
         }
 
+        if (!receiverId || typeof receiverId !== 'number') {
+          socket.emit("call:error", { message: "Invalid receiver ID" });
+          return;
+        }
+
+        // Check if receiver exists
+        const [receiver] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, receiverId))
+          .limit(1);
+
+        if (!receiver) {
+          socket.emit("call:error", { message: "Receiver not found" });
+          return;
+        }
+
         const [call] = await db.insert(calls).values({
           callerId: userId,
           receiverId,
@@ -173,6 +190,8 @@ export function setupSocket(server: HTTPServer) {
         if (toSocket) {
           io.to(toSocket).emit("call:incoming", { callId: call.id, from: userId });
         }
+
+        socket.emit("call:started", { callId: call.id });
       } catch (error) {
         console.error("Error starting call:", error);
         socket.emit("call:error", { message: "Failed to start call" });

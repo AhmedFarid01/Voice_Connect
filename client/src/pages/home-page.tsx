@@ -15,11 +15,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Phone, UserPlus, LogOut, Search } from "lucide-react";
 import { Dialpad } from "@/components/dialpad";
 import type { User, Call, Contact } from "@db/schema";
+import { useToast } from "@/hooks/use-toast";
 
 export default function HomePage() {
   const [, setLocation] = useLocation();
   const { user, logout } = useUser();
   const socket = useSocket();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [userStatuses, setUserStatuses] = useState<Record<number, string>>({});
 
@@ -48,8 +50,21 @@ export default function HomePage() {
     };
   }, [socket]);
 
-  const handleCallUser = (userId: number) => {
-    setLocation(`/call/${userId}`);
+  const handleCallUser = (userId: number | string) => {
+    if (!userId) return;
+
+    // Ensure userId is a number
+    const receiverId = typeof userId === 'string' ? parseInt(userId, 10) : userId;
+    if (isNaN(receiverId)) {
+      toast({
+        variant: "destructive",
+        title: "Invalid User",
+        description: "Please enter a valid user ID",
+      });
+      return;
+    }
+
+    setLocation(`/call/${receiverId}`);
   };
 
   const handleAddContact = async (contactId: number) => {
