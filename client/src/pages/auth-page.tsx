@@ -61,6 +61,7 @@ export default function AuthPage() {
       email: "",
       phoneNumber: "",
     },
+    mode: "onChange",  // Enable real-time validation
   });
 
   const onSubmit = async (data: LoginFormData | RegisterFormData) => {
@@ -116,7 +117,7 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Username</FormLabel>
                       <FormControl>
-                        <Input {...field} />
+                        <Input placeholder="Enter username" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -129,7 +130,7 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" {...field} />
+                        <Input type="password" placeholder="Enter password" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -158,7 +159,7 @@ export default function AuthPage() {
             </Form>
           ) : (
             <Form {...registerForm}>
-              <form onSubmit={registerForm.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={registerForm.handleSubmit(onSubmit)} className="space-y-4" noValidate>
                 <FormField
                   control={registerForm.control}
                   name="username"
@@ -166,7 +167,7 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Username</FormLabel>
                       <FormControl>
-                        <Input {...field} />
+                        <Input placeholder="Enter username" autoComplete="off" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -179,7 +180,12 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" {...field} />
+                        <Input 
+                          type="password" 
+                          placeholder="Enter password" 
+                          autoComplete="new-password" 
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -192,7 +198,12 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input type="email" {...field} />
+                        <Input 
+                          type="email" 
+                          placeholder="Enter email"
+                          autoComplete="off" 
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -205,7 +216,11 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Phone Number</FormLabel>
                       <FormControl>
-                        <Input {...field} />
+                        <Input 
+                          placeholder="Enter phone number"
+                          autoComplete="off" 
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
