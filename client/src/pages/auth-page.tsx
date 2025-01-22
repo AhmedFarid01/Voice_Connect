@@ -15,6 +15,11 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
+const loginSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
 const registerSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -22,11 +27,13 @@ const registerSchema = z.object({
   phoneNumber: z.string().min(10, "Phone number must be at least 10 digits"),
 });
 
+type LoginFormData = z.infer<typeof loginSchema>;
 type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
+  const [isLogin, setIsLogin] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { register: registerUser } = useUser();
+  const { login, register: registerUser } = useUser();
   const { toast } = useToast();
   const [formValues, setFormValues] = useState({
     username: "",
@@ -48,31 +55,47 @@ export default function AuthPage() {
     setIsSubmitting(true);
 
     try {
-      // Validate the form data
-      const parsedData = registerSchema.safeParse(formValues);
-      if (!parsedData.success) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Please check your input and try again",
-        });
-        return;
-      }
+      if (isLogin) {
+        // Login flow
+        const loginData = {
+          username: formValues.username,
+          password: formValues.password
+        };
+        const result = await login(loginData);
+        if (!result.ok) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: result.message,
+          });
+          return;
+        }
+      } else {
+        // Register flow
+        const parsedData = registerSchema.safeParse(formValues);
+        if (!parsedData.success) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Please check your input and try again",
+          });
+          return;
+        }
 
-      const result = await registerUser(formValues);
-
-      if (!result.ok) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: result.message,
-        });
-        return;
+        const result = await registerUser(formValues);
+        if (!result.ok) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: result.message,
+          });
+          return;
+        }
       }
 
       toast({
         title: "Success",
-        description: "Registered successfully",
+        description: isLogin ? "Logged in successfully" : "Registered successfully",
       });
     } catch (error) {
       toast({
@@ -85,12 +108,24 @@ export default function AuthPage() {
     }
   };
 
+  const toggleAuthMode = () => {
+    setIsLogin(!isLogin);
+    setFormValues({
+      username: "",
+      password: "",
+      email: "",
+      phoneNumber: "",
+    });
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-[400px]">
         <CardHeader>
-          <CardTitle>Register</CardTitle>
-          <CardDescription>Create a new account</CardDescription>
+          <CardTitle>{isLogin ? "Login" : "Register"}</CardTitle>
+          <CardDescription>
+            {isLogin ? "Enter your credentials" : "Create a new account"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -124,40 +159,56 @@ export default function AuthPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium">
-                Email
-              </label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                value={formValues.email}
-                onChange={handleInputChange}
-                placeholder="Enter email"
-                disabled={isSubmitting}
-              />
-            </div>
+            {!isLogin && (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="email" className="text-sm font-medium">
+                    Email
+                  </label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value={formValues.email}
+                    onChange={handleInputChange}
+                    placeholder="Enter email"
+                    disabled={isSubmitting}
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <label htmlFor="phoneNumber" className="text-sm font-medium">
-                Phone Number
-              </label>
-              <Input
-                id="phoneNumber"
-                name="phoneNumber"
-                type="tel"
-                value={formValues.phoneNumber}
-                onChange={handleInputChange}
-                placeholder="Enter phone number"
-                disabled={isSubmitting}
-              />
-            </div>
+                <div className="space-y-2">
+                  <label htmlFor="phoneNumber" className="text-sm font-medium">
+                    Phone Number
+                  </label>
+                  <Input
+                    id="phoneNumber"
+                    name="phoneNumber"
+                    type="tel"
+                    value={formValues.phoneNumber}
+                    onChange={handleInputChange}
+                    placeholder="Enter phone number"
+                    disabled={isSubmitting}
+                  />
+                </div>
+              </>
+            )}
 
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Register
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                {isLogin ? "Login" : "Register"}
+              </Button>
+              <Button
+                type="button"
+                variant="link"
+                onClick={toggleAuthMode}
+                disabled={isSubmitting}
+              >
+                {isLogin
+                  ? "Don't have an account? Register"
+                  : "Already have an account? Login"}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
