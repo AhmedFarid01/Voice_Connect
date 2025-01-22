@@ -31,6 +31,7 @@ export default function CallPage() {
     endCall,
     acceptCall,
     rejectCall,
+    enableVideo,
     isCallActive,
     localStream,
     remoteStreams,
@@ -224,8 +225,16 @@ export default function CallPage() {
                 </span>
                 {isAudioOnly && (
                   <Alert>
-                    <AlertDescription>
+                    <AlertDescription className="flex items-center gap-2">
                       Running in audio-only mode
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={enableVideo}
+                      >
+                        <Video className="h-4 w-4 mr-2" />
+                        Enable Video
+                      </Button>
                     </AlertDescription>
                   </Alert>
                 )}

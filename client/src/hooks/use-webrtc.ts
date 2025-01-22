@@ -274,6 +274,56 @@ export function useWebRTC(userId: number) {
     }
   }, [socket, cleanup, setupLocalStream]);
 
+  const enableVideo = useCallback(async () => {
+    try {
+      if (!isAudioOnly || !localStream) return;
+
+      console.log('Switching to video call...');
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        }
+      });
+
+      // Stop old tracks
+      localStream.getTracks().forEach(track => {
+        track.stop();
+      });
+
+      // Replace all tracks in peer connections
+      peerConnections.current.forEach(({ connection }) => {
+        const senders = connection.getSenders();
+        newStream.getTracks().forEach(track => {
+          const sender = senders.find(s => s.track?.kind === track.kind);
+          if (sender) {
+            sender.replaceTrack(track);
+          } else {
+            connection.addTrack(track, newStream);
+          }
+        });
+      });
+
+      setLocalStream(newStream);
+      setIsAudioOnly(false);
+    } catch (err) {
+      console.error('Error enabling video:', err);
+      setError('Failed to enable video. Please check your camera permissions.');
+      toast({
+        variant: "destructive",
+        title: "Video Error",
+        description: "Failed to enable video. Please check your camera."
+      });
+    }
+  }, [isAudioOnly, localStream, toast]);
+
+
   useEffect(() => {
     if (!socket) {
       setIsCallActive(false);
@@ -351,6 +401,7 @@ export function useWebRTC(userId: number) {
     endCall,
     acceptCall,
     rejectCall,
+    enableVideo,
     isCallActive,
     localStream,
     remoteStreams,
