@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useUser } from "@/hooks/use-user";
+import { useSocket } from "@/hooks/use-socket";
 import {
   Card,
   CardContent,
@@ -11,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { GroupCallGrid } from "@/components/group-call-grid";
-import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users } from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useState as useDialogState } from "react";
@@ -20,6 +21,7 @@ export default function CallPage() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { user } = useUser();
+  const socket = useSocket();
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isCreateRoomOpen, setIsCreateRoomOpen] = useDialogState(false);
@@ -32,11 +34,16 @@ export default function CallPage() {
     isCallActive,
     localStream,
     remoteStreams,
-    error,
+    error: webRTCError,
     activeRoomId
   } = useWebRTC(user?.id || 0);
 
   useEffect(() => {
+    if (!socket) {
+      // Don't try to join if socket isn't connected
+      return;
+    }
+
     if (id && !isCallActive && !activeRoomId) {
       // If ID is numeric, it's a room ID
       const roomId = parseInt(id);
@@ -44,9 +51,13 @@ export default function CallPage() {
         joinRoom(roomId);
       }
     }
-  }, [id, isCallActive, activeRoomId, joinRoom]);
+  }, [id, isCallActive, activeRoomId, joinRoom, socket]);
 
   const handleCreateRoom = () => {
+    if (!socket) {
+      return;
+    }
+
     if (roomName) {
       createRoom(roomName);
       setIsCreateRoomOpen(false);
@@ -77,12 +88,24 @@ export default function CallPage() {
     }
   };
 
+  // Handle both WebRTC errors and socket connection issues
+  const error = webRTCError || (!socket ? "Connecting to server..." : null);
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-[400px]">
           <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
+            <CardTitle className="text-destructive">
+              {error === "Connecting to server..." ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  {error}
+                </div>
+              ) : (
+                "Error"
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <p>{error}</p>

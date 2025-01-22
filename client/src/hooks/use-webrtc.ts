@@ -52,6 +52,9 @@ export function useWebRTC(userId: number) {
 
     pc.oniceconnectionstatechange = () => {
       console.log(`ICE Connection State with peer ${peerId}:`, pc.iceConnectionState);
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        setError('Connection failed. Please try again.');
+      }
     };
 
     peerConnections.current.set(peerId, { connection: pc, stream: null });
@@ -68,7 +71,7 @@ export function useWebRTC(userId: number) {
       return stream;
     } catch (err) {
       console.error('Error accessing media devices:', err);
-      setError('Could not access media devices');
+      setError('Could not access camera or microphone');
       return null;
     }
   };
@@ -115,10 +118,16 @@ export function useWebRTC(userId: number) {
     setIsCallActive(false);
     setActiveRoomId(null);
     currentCallId.current = null;
+    setError(null);
   };
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      // Reset state when socket disconnects
+      setIsCallActive(false);
+      setError('Socket connection not available');
+      return;
+    }
 
     socket.on('room:created', (room) => {
       setActiveRoomId(room.id);
@@ -183,6 +192,7 @@ export function useWebRTC(userId: number) {
         }
       } catch (err) {
         console.error('Error handling signal:', err);
+        setError('Failed to establish connection');
       }
     });
 
