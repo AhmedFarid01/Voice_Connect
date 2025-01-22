@@ -58,48 +58,91 @@ export function setupSocket(server: HTTPServer) {
 
     // Room Management
     socket.on("room:create", async ({ name }) => {
-      const [room] = await db
-        .insert(rooms)
-        .values({
-          name,
-          createdBy: userId,
-          isActive: true
-        })
-        .returning();
+      try {
+        const [room] = await db
+          .insert(rooms)
+          .values({
+            name,
+            createdBy: userId,
+            isActive: true
+          })
+          .returning();
 
-      await db.insert(roomParticipants).values({
-        roomId: room.id,
-        userId: userId
-      });
+        if (!userId) {
+          socket.emit("room:error", { message: "User not registered" });
+          return;
+        }
 
-      socket.join(`room:${room.id}`);
-      userRooms.set(userId, room.id);
-      socket.emit("room:created", room);
+        await db.insert(roomParticipants).values({
+          roomId: room.id,
+          userId: userId
+        });
+
+        socket.join(`room:${room.id}`);
+        userRooms.set(userId, room.id);
+        socket.emit("room:created", room);
+      } catch (error) {
+        console.error("Error creating room:", error);
+        socket.emit("room:error", { message: "Failed to create room" });
+      }
     });
 
     socket.on("room:join", async ({ roomId }) => {
-      await db.insert(roomParticipants).values({
-        roomId,
-        userId
-      });
+      try {
+        if (!userId) {
+          socket.emit("room:error", { message: "User not registered" });
+          return;
+        }
 
-      socket.join(`room:${roomId}`);
-      userRooms.set(userId, roomId);
-      io.to(`room:${roomId}`).emit("user:joined", { userId });
+        // Check if room exists
+        const [room] = await db
+          .select()
+          .from(rooms)
+          .where(eq(rooms.id, roomId))
+          .limit(1);
+
+        if (!room) {
+          socket.emit("room:error", { message: "Room not found" });
+          return;
+        }
+
+        await db.insert(roomParticipants).values({
+          roomId,
+          userId: userId,
+          joinedAt: new Date()
+        });
+
+        socket.join(`room:${roomId}`);
+        userRooms.set(userId, roomId);
+        io.to(`room:${roomId}`).emit("user:joined", { userId });
+      } catch (error) {
+        console.error("Error joining room:", error);
+        socket.emit("room:error", { message: "Failed to join room" });
+      }
     });
 
     socket.on("room:leave", async ({ roomId }) => {
-      await db
-        .update(roomParticipants)
-        .set({ leftAt: new Date() })
-        .where(eq(roomParticipants.userId, userId));
+      try {
+        if (!userId) {
+          socket.emit("room:error", { message: "User not registered" });
+          return;
+        }
 
-      socket.leave(`room:${roomId}`);
-      userRooms.delete(userId);
-      io.to(`room:${roomId}`).emit("user:left", { userId });
+        await db
+          .update(roomParticipants)
+          .set({ leftAt: new Date() })
+          .where(eq(roomParticipants.userId, userId));
+
+        socket.leave(`room:${roomId}`);
+        userRooms.delete(userId);
+        io.to(`room:${roomId}`).emit("user:left", { userId });
+      } catch (error) {
+        console.error("Error leaving room:", error);
+        socket.emit("room:error", { message: "Failed to leave room" });
+      }
     });
 
-    // WebRTC Signaling for Group Calls
+    // WebRTC Signaling
     socket.on("signal", ({ to, signal, roomId }) => {
       const toSocket = connectedUsers.get(to);
       if (toSocket) {
@@ -114,6 +157,11 @@ export function setupSocket(server: HTTPServer) {
     // Call Events
     socket.on("call:start", async ({ receiverId }) => {
       try {
+        if (!userId) {
+          socket.emit("call:error", { message: "User not registered" });
+          return;
+        }
+
         const [call] = await db.insert(calls).values({
           callerId: userId,
           receiverId,
