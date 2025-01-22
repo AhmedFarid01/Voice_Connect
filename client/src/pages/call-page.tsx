@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useUser } from "@/hooks/use-user";
@@ -22,6 +22,7 @@ export default function CallPage() {
   const socket = useSocket();
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [hasInitiatedCall, setHasInitiatedCall] = useState(false);
 
   const {
     startCall,
@@ -34,23 +35,27 @@ export default function CallPage() {
     isAudioOnly
   } = useWebRTC(user?.id || 0);
 
-  useEffect(() => {
-    if (!socket || !id) return;
+  const initiateCall = useCallback(() => {
+    if (!socket || !id || hasInitiatedCall) return;
 
     const receiverId = parseInt(id);
     if (!isNaN(receiverId) && !isCallActive) {
       console.log('Starting call with:', receiverId);
       startCall(receiverId, false);
+      setHasInitiatedCall(true);
     }
-  }, [id, socket, isCallActive, startCall]);
+  }, [id, socket, isCallActive, startCall, hasInitiatedCall]);
+
+  useEffect(() => {
+    initiateCall();
+    return () => {
+      endCall();
+    };
+  }, [initiateCall, endCall]);
 
   const handleRetry = () => {
-    if (!socket || !id) return;
-    const receiverId = parseInt(id);
-    if (!isNaN(receiverId)) {
-      console.log('Retrying call with:', receiverId);
-      startCall(receiverId, false);
-    }
+    setHasInitiatedCall(false);
+    initiateCall();
   };
 
   const handleJoinAudioOnly = () => {
@@ -59,6 +64,7 @@ export default function CallPage() {
     if (!isNaN(receiverId)) {
       console.log('Starting audio-only call with:', receiverId);
       startCall(receiverId, true);
+      setHasInitiatedCall(true);
     }
   };
 

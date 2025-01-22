@@ -32,7 +32,6 @@ export function useWebRTC(userId: number) {
   const cleanup = useCallback(() => {
     console.log('Cleaning up WebRTC connections and streams...');
 
-    // Clean up peer connections
     peerConnections.current.forEach(({ connection }) => {
       try {
         connection.close();
@@ -42,7 +41,6 @@ export function useWebRTC(userId: number) {
     });
     peerConnections.current.clear();
 
-    // Clean up media streams
     if (localStream) {
       try {
         localStream.getTracks().forEach(track => {
@@ -70,12 +68,11 @@ export function useWebRTC(userId: number) {
     cleanup();
   }, [socket, cleanup]);
 
-  const setupLocalStream = async (audioOnly = false) => {
+  const setupLocalStream = useCallback(async (audioOnly = false) => {
     try {
       setIsInitializing(true);
       console.log('Setting up local stream... (Attempt', mediaDeviceRetries.current + 1, '/', maxMediaRetries, ')');
 
-      // Clean up any existing streams
       if (localStream) {
         localStream.getTracks().forEach(track => {
           track.stop();
@@ -84,23 +81,22 @@ export function useWebRTC(userId: number) {
         setLocalStream(null);
       }
 
-      // Wait for devices to be released
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      try {
-        const constraints = {
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          },
-          video: !audioOnly ? {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user'
-          } : false
-        };
+      const constraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: !audioOnly ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        } : false
+      };
 
+      try {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         console.log('Successfully got media stream:', audioOnly ? 'audio-only' : 'audio+video');
         setLocalStream(stream);
@@ -118,16 +114,7 @@ export function useWebRTC(userId: number) {
           return setupLocalStream(audioOnly);
         }
 
-        if (err.name === 'NotAllowedError') {
-          setError('Media access denied. Please grant camera and microphone permissions.');
-        } else if (err.name === 'NotReadableError') {
-          setError('Could not access media devices. Please ensure no other application is using your camera/microphone.');
-        } else if (err.name === 'NotFoundError') {
-          setError('No media devices found. Please check your camera and microphone connections.');
-        } else {
-          setError('Media device error. Please check your hardware and browser settings.');
-        }
-
+        setError(getMediaErrorMessage(err));
         toast({
           variant: "destructive",
           title: "Media Access Error",
@@ -142,6 +129,19 @@ export function useWebRTC(userId: number) {
       setError('Could not initialize media devices.');
       setIsInitializing(false);
       return null;
+    }
+  }, [toast]);
+
+  const getMediaErrorMessage = (err: any) => {
+    switch (err.name) {
+      case 'NotAllowedError':
+        return 'Media access denied. Please grant camera and microphone permissions.';
+      case 'NotReadableError':
+        return 'Could not access media devices. Please ensure no other application is using your camera/microphone.';
+      case 'NotFoundError':
+        return 'No media devices found. Please check your camera and microphone connections.';
+      default:
+        return 'Media device error. Please check your hardware and browser settings.';
     }
   };
 
@@ -208,14 +208,14 @@ export function useWebRTC(userId: number) {
     }
   }, [socket, localStream, endCall]);
 
-  const startCall = async (receiverId: number, audioOnly = false) => {
+  const startCall = useCallback(async (receiverId: number, audioOnly = false) => {
     if (!socket) {
       setError('Socket connection not available');
       return;
     }
 
     try {
-      cleanup(); // Clean up any existing call state
+      cleanup();
       console.log('Starting call with:', receiverId, 'Audio only:', audioOnly);
       const stream = await setupLocalStream(audioOnly);
       if (!stream) return;
@@ -227,7 +227,7 @@ export function useWebRTC(userId: number) {
       setError('Failed to start call');
       cleanup();
     }
-  };
+  }, [socket, cleanup, setupLocalStream]);
 
   useEffect(() => {
     if (!socket) {
@@ -236,11 +236,10 @@ export function useWebRTC(userId: number) {
       return;
     }
 
-    socket.on('call:incoming', async ({ callId, from: peerId }) => {
+    const handleIncomingCall = async ({ callId, from: peerId }: { callId: number, from: number }) => {
       console.log('Incoming call from:', peerId);
       currentCallId.current = callId;
 
-      // Set up local stream before creating peer connection
       const stream = await setupLocalStream(false);
       if (!stream) {
         socket.emit('call:reject', { callId });
@@ -266,20 +265,9 @@ export function useWebRTC(userId: number) {
         setError('Failed to establish connection');
         cleanup();
       }
-    });
+    };
 
-    socket.on('call:started', ({ callId }) => {
-      console.log('Call started:', callId);
-      currentCallId.current = callId;
-      setIsCallActive(true);
-    });
-
-    socket.on('call:ended', () => {
-      console.log('Call ended');
-      cleanup();
-    });
-
-    socket.on('signal', async ({ from: peerId, signal }) => {
+    const handleSignal = async ({ from: peerId, signal }: { from: number, signal: any }) => {
       console.log('Received signal from peer:', peerId, signal.type);
       let pc = peerConnections.current.get(peerId)?.connection;
 
@@ -314,7 +302,19 @@ export function useWebRTC(userId: number) {
         console.error('Error handling signal:', err);
         setError('Failed to establish connection');
       }
+    };
+
+    socket.on('call:incoming', handleIncomingCall);
+    socket.on('call:started', ({ callId }) => {
+      console.log('Call started:', callId);
+      currentCallId.current = callId;
+      setIsCallActive(true);
     });
+    socket.on('call:ended', () => {
+      console.log('Call ended');
+      cleanup();
+    });
+    socket.on('signal', handleSignal);
 
     return () => {
       socket.off('call:incoming');
