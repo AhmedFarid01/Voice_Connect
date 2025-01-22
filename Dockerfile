@@ -16,7 +16,7 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Create a startup script
+# Create a startup script with proper line endings
 RUN echo '#!/bin/bash\n\
 echo "Waiting for database to be ready..."\n\
 while ! nc -z postgres 5432; do\n\
@@ -30,7 +30,9 @@ npm run db:push\n\
 echo "Starting application..."\n\
 npm run start' > /app/docker-entrypoint.sh
 
-RUN chmod +x /app/docker-entrypoint.sh
+# Make the script executable and ensure proper line endings
+RUN chmod +x /app/docker-entrypoint.sh && \
+    sed -i 's/\r$//' /app/docker-entrypoint.sh
 
 # Install netcat for database health check
 RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
@@ -38,5 +40,5 @@ RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/l
 # Expose port 5000
 EXPOSE 5000
 
-# Start the application using the entrypoint script
-CMD ["/app/docker-entrypoint.sh"]
+# Start the application using the entrypoint script with bash
+CMD ["/bin/bash", "/app/docker-entrypoint.sh"]
