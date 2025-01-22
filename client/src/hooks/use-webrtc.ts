@@ -30,6 +30,31 @@ export function useWebRTC(userId: number) {
   const connectionRetries = useRef(0);
   const maxRetries = 3;
 
+  // Define cleanup function first
+  const cleanup = useCallback(() => {
+    peerConnections.current.forEach(({ connection }) => connection.close());
+    peerConnections.current.clear();
+    localStream?.getTracks().forEach(track => track.stop());
+    setLocalStream(null);
+    setRemoteStreams(new Map());
+    setIsCallActive(false);
+    setActiveRoomId(null);
+    currentCallId.current = null;
+    setError(null);
+    connectionRetries.current = 0;
+  }, []);
+
+  // Define leaveRoom before it's used in createPeerConnection
+  const leaveRoom = useCallback(() => {
+    if (!socket || !activeRoomId) return;
+
+    socket.emit('room:leave', { roomId: activeRoomId });
+    if (currentCallId.current) {
+      socket.emit('call:end', { callId: currentCallId.current, roomId: activeRoomId });
+    }
+    cleanup();
+  }, [socket, activeRoomId, cleanup]);
+
   const setupLocalStream = async () => {
     try {
       setIsInitializing(true);
@@ -158,29 +183,6 @@ export function useWebRTC(userId: number) {
     }
   };
 
-  const leaveRoom = () => {
-    if (!socket || !activeRoomId) return;
-
-    socket.emit('room:leave', { roomId: activeRoomId });
-    if (currentCallId.current) {
-      socket.emit('call:end', { 
-        callId: currentCallId.current,
-        roomId: activeRoomId 
-      });
-    }
-
-    // Cleanup
-    peerConnections.current.forEach(({ connection }) => connection.close());
-    peerConnections.current.clear();
-    localStream?.getTracks().forEach(track => track.stop());
-    setLocalStream(null);
-    setRemoteStreams(new Map());
-    setIsCallActive(false);
-    setActiveRoomId(null);
-    currentCallId.current = null;
-    setError(null);
-    connectionRetries.current = 0;
-  };
 
   useEffect(() => {
     if (!socket) {
@@ -277,9 +279,9 @@ export function useWebRTC(userId: number) {
       socket.off('signal');
       socket.off('call:started');
       socket.off('call:ended');
-      leaveRoom();
+      cleanup();
     };
-  }, [socket, createPeerConnection]);
+  }, [socket, createPeerConnection, leaveRoom, cleanup, activeRoomId]);
 
   return {
     createRoom,
