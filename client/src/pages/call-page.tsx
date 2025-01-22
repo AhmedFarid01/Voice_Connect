@@ -26,7 +26,6 @@ export default function CallPage() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isCreateRoomOpen, setIsCreateRoomOpen] = useDialogState(false);
   const [roomName, setRoomName] = useState("");
-  const [isConnecting, setIsConnecting] = useState(true);
 
   const {
     createRoom,
@@ -36,39 +35,19 @@ export default function CallPage() {
     localStream,
     remoteStreams,
     error: webRTCError,
-    activeRoomId
+    activeRoomId,
+    isInitializing
   } = useWebRTC(user?.id || 0);
-
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
-    if (!socket) {
-      // Set a timeout to show connecting state
-      timeoutId = setTimeout(() => {
-        setIsConnecting(false);
-      }, 5000);
-    } else {
-      setIsConnecting(false);
-    }
-
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, [socket]);
 
   useEffect(() => {
     if (!socket || !id) return;
 
-    if (!isCallActive && !activeRoomId) {
-      const roomId = parseInt(id);
-      if (!isNaN(roomId)) {
-        console.log('Attempting to join room:', roomId);
-        joinRoom(roomId);
-      }
+    const roomId = parseInt(id);
+    if (!isNaN(roomId) && !isCallActive && !activeRoomId) {
+      console.log('Attempting to join room:', roomId);
+      joinRoom(roomId);
     }
-  }, [id, isCallActive, activeRoomId, joinRoom, socket]);
+  }, [id, socket, isCallActive, activeRoomId, joinRoom]);
 
   const handleCreateRoom = () => {
     if (!socket) {
@@ -105,28 +84,6 @@ export default function CallPage() {
     }
   };
 
-
-  // Handle connection states
-  if (isConnecting) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Card className="w-[400px]">
-          <CardHeader>
-            <CardTitle>
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Connecting to server...
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p>Please wait while we establish a connection...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   if (!socket) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -135,13 +92,33 @@ export default function CallPage() {
             <CardTitle className="text-destructive">Connection Failed</CardTitle>
           </CardHeader>
           <CardContent>
-            <p>Unable to connect to the server. Please try again later.</p>
+            <p>Unable to connect to the server. Please check your internet connection and try again.</p>
           </CardContent>
           <CardFooter>
             <Button onClick={() => setLocation("/")} className="w-full">
               Return Home
             </Button>
           </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="w-[400px]">
+          <CardHeader>
+            <CardTitle>
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Setting up call...
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>Please allow camera and microphone access when prompted...</p>
+          </CardContent>
         </Card>
       </div>
     );
