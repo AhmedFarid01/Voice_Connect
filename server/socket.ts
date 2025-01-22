@@ -168,16 +168,20 @@ export function setupSocket(server: HTTPServer) {
           .where(eq(calls.id, callId))
           .returning();
 
-        if (updatedCall.roomId) {
-          io.to(`room:${updatedCall.roomId}`).emit("call:ended", { callId });
-        } else {
-          const receiverSocket = connectedUsers.get(updatedCall.receiverId);
-          if (receiverSocket) {
-            io.to(receiverSocket).emit("call:ended", { callId });
+        // Send call ended event to all participants
+        if (updatedCall) {
+          // If it's a room call
+          if (updatedCall.roomId) {
+            io.to(`room:${updatedCall.roomId}`).emit("call:ended", { callId });
+          } else {
+            // For peer-to-peer calls
+            const receiverSocket = connectedUsers.get(updatedCall.receiverId);
+            if (receiverSocket) {
+              io.to(receiverSocket).emit("call:ended", { callId });
+            }
           }
+          socket.emit("call:ended", { callId });
         }
-
-        socket.emit("call:ended", { callId });
       } catch (error) {
         console.error("Error ending call:", error);
         socket.emit("call:error", { message: "Failed to end call" });

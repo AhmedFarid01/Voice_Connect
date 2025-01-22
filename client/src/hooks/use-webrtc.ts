@@ -279,32 +279,60 @@ export function useWebRTC(userId: number) {
       if (!isAudioOnly || !localStream) return;
 
       console.log('Switching to video call...');
+      const videoConstraints = {
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        }
+      };
+
+      // First check if video is available
+      try {
+        await navigator.mediaDevices.getUserMedia(videoConstraints);
+      } catch (err) {
+        console.error('Video device not available:', err);
+        toast({
+          variant: "destructive",
+          title: "Video Error",
+          description: "No video device available. Please check your camera."
+        });
+        return;
+      }
+
+      // Get new stream with both audio and video
       const newStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
         },
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'user'
-        }
+        ...videoConstraints
       });
+
+      // Keep audio track from old stream if it exists
+      const existingAudioTrack = localStream.getAudioTracks()[0];
+      if (existingAudioTrack) {
+        newStream.addTrack(existingAudioTrack.clone());
+      }
 
       // Stop old tracks
       localStream.getTracks().forEach(track => {
         track.stop();
       });
 
-      // Replace all tracks in peer connections
+      // Replace tracks in all peer connections
       peerConnections.current.forEach(({ connection }) => {
         const senders = connection.getSenders();
         newStream.getTracks().forEach(track => {
           const sender = senders.find(s => s.track?.kind === track.kind);
           if (sender) {
-            sender.replaceTrack(track);
+            console.log(`Replacing ${track.kind} track`);
+            sender.replaceTrack(track).catch(err => {
+              console.error(`Error replacing ${track.kind} track:`, err);
+            });
           } else {
+            console.log(`Adding new ${track.kind} track`);
             connection.addTrack(track, newStream);
           }
         });
@@ -312,6 +340,16 @@ export function useWebRTC(userId: number) {
 
       setLocalStream(newStream);
       setIsAudioOnly(false);
+
+      // Notify other participants about video enabled
+      peerConnections.current.forEach(({ connection }, peerId) => {
+        if (socket) {
+          socket.emit('signal', {
+            to: peerId,
+            signal: { type: 'video-enabled' }
+          });
+        }
+      });
     } catch (err) {
       console.error('Error enabling video:', err);
       setError('Failed to enable video. Please check your camera permissions.');
@@ -321,7 +359,7 @@ export function useWebRTC(userId: number) {
         description: "Failed to enable video. Please check your camera."
       });
     }
-  }, [isAudioOnly, localStream, toast]);
+  }, [isAudioOnly, localStream, socket, toast]);
 
 
   useEffect(() => {
