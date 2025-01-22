@@ -22,20 +22,37 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
-const authSchema = z.object({
-  username: z.string().min(3).max(20),
-  password: z.string().min(6),
-  email: z.string().email().optional(),
-  phoneNumber: z.string().min(10).optional(),
+// Separate schemas for login and registration
+const loginSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
+
+const registerSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().email("Invalid email address"),
+  phoneNumber: z.string().min(10, "Phone number must be at least 10 digits"),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
+type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const { login, register } = useUser();
   const { toast } = useToast();
 
-  const form = useForm<z.infer<typeof authSchema>>({
-    resolver: zodResolver(authSchema),
+  const loginForm = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+    },
+  });
+
+  const registerForm = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
     defaultValues: {
       username: "",
       password: "",
@@ -44,11 +61,11 @@ export default function AuthPage() {
     },
   });
 
-  const onSubmit = async (values: z.infer<typeof authSchema>) => {
+  const onSubmit = async (values: LoginFormData | RegisterFormData) => {
     try {
       const result = isLogin
-        ? await login(values)
-        : await register(values);
+        ? await login(values as LoginFormData)
+        : await register(values as RegisterFormData);
 
       if (!result.ok) {
         toast({
@@ -72,6 +89,8 @@ export default function AuthPage() {
     }
   };
 
+  const currentForm = isLogin ? loginForm : registerForm;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-[400px]">
@@ -84,10 +103,10 @@ export default function AuthPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <Form {...currentForm}>
+            <form onSubmit={currentForm.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
-                control={form.control}
+                control={currentForm.control}
                 name="username"
                 render={({ field }) => (
                   <FormItem>
@@ -100,7 +119,7 @@ export default function AuthPage() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={currentForm.control}
                 name="password"
                 render={({ field }) => (
                   <FormItem>
@@ -115,7 +134,7 @@ export default function AuthPage() {
               {!isLogin && (
                 <>
                   <FormField
-                    control={form.control}
+                    control={currentForm.control}
                     name="email"
                     render={({ field }) => (
                       <FormItem>
@@ -128,7 +147,7 @@ export default function AuthPage() {
                     )}
                   />
                   <FormField
-                    control={form.control}
+                    control={currentForm.control}
                     name="phoneNumber"
                     render={({ field }) => (
                       <FormItem>
@@ -149,7 +168,10 @@ export default function AuthPage() {
                 <Button
                   type="button"
                   variant="link"
-                  onClick={() => setIsLogin(!isLogin)}
+                  onClick={() => {
+                    setIsLogin(!isLogin);
+                    currentForm.reset();
+                  }}
                 >
                   {isLogin
                     ? "Don't have an account? Register"
