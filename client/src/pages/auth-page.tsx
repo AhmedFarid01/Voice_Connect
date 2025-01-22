@@ -23,7 +23,6 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
-// Move validation schemas outside component
 const loginSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -61,7 +60,6 @@ export default function AuthPage() {
       email: "",
       phoneNumber: "",
     },
-    mode: "onChange",  // Enable real-time validation
   });
 
   const onSubmit = async (data: LoginFormData | RegisterFormData) => {
@@ -117,7 +115,13 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Username</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter username" {...field} />
+                        <Input 
+                          placeholder="Enter username"
+                          value={field.value}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          disabled={isSubmitting}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -130,7 +134,14 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="Enter password" {...field} />
+                        <Input 
+                          type="password"
+                          placeholder="Enter password"
+                          value={field.value}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          disabled={isSubmitting}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -167,7 +178,13 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Username</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter username" autoComplete="off" {...field} />
+                        <Input 
+                          placeholder="Enter username"
+                          value={field.value}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          disabled={isSubmitting}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -181,10 +198,12 @@ export default function AuthPage() {
                       <FormLabel>Password</FormLabel>
                       <FormControl>
                         <Input 
-                          type="password" 
-                          placeholder="Enter password" 
-                          autoComplete="new-password" 
-                          {...field} 
+                          type="password"
+                          placeholder="Enter password"
+                          value={field.value}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          disabled={isSubmitting}
                         />
                       </FormControl>
                       <FormMessage />
@@ -199,10 +218,12 @@ export default function AuthPage() {
                       <FormLabel>Email</FormLabel>
                       <FormControl>
                         <Input 
-                          type="email" 
+                          type="email"
                           placeholder="Enter email"
-                          autoComplete="off" 
-                          {...field} 
+                          value={field.value}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          disabled={isSubmitting}
                         />
                       </FormControl>
                       <FormMessage />
@@ -217,9 +238,12 @@ export default function AuthPage() {
                       <FormLabel>Phone Number</FormLabel>
                       <FormControl>
                         <Input 
+                          type="tel"
                           placeholder="Enter phone number"
-                          autoComplete="off" 
-                          {...field} 
+                          value={field.value}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          disabled={isSubmitting}
                         />
                       </FormControl>
                       <FormMessage />
