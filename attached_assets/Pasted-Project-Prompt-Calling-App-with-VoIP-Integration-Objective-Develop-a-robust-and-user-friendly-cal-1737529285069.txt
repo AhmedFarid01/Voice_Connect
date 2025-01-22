@@ -1,0 +1,86 @@
+Project Prompt: Calling App with VoIP Integration
+
+Objective:
+Develop a robust and user-friendly calling app that allows users to make VoIP calls to other users of the app. The app should connect to an Asterisk server running on Docker for VoIP functionalities and use a PostgreSQL database for storing user data. The app must include features for user login and signup.
+
+Features:
+User Management:
+Signup:
+
+Users can create an account using their email and phone number.
+Password hashing and secure storage.
+Input validation to ensure proper email and phone number formats.
+Login:
+
+Users can log in using their registered credentials.
+Token-based authentication using JWT to maintain user sessions securely.
+Option to recover passwords via email or OTP.
+User Profile:
+
+Allow users to update their profile information (e.g., name, profile picture, status).
+VoIP Calling:
+Call Features:
+
+Users can search for other registered users by username or phone number.
+Real-time VoIP calls using the Asterisk server for SIP signaling.
+Support for basic call features such as mute, unmute, hold, and end call.
+Call Notifications:
+
+Push notifications for incoming calls, even when the app is in the background.
+Call Logs:
+
+Maintain call logs (missed, outgoing, and incoming) for each user in the PostgreSQL database.
+Backend Services:
+Asterisk Server Integration:
+
+The app will communicate with the Asterisk server running on Docker via APIs or SIP protocol.
+Configure the Asterisk server for user extensions and manage SIP accounts dynamically through the app.
+PostgreSQL Database:
+
+Store user details, call logs, and authentication tokens.
+Ensure database tables are normalized and queries are optimized.
+API Layer:
+
+Develop RESTful or GraphQL APIs using Node.js/Express or NestJS.
+Endpoints for user authentication, fetching contacts, and managing call logs.
+Frontend Application:
+User Interface:
+
+A modern and intuitive design for easy navigation.
+Separate screens for login/signup, contacts, call history, and active calls.
+VoIP SDK Integration:
+
+Use a VoIP library like WebRTC or SIP.js for handling audio streams.
+Real-Time Communication:
+
+Implement WebSockets (e.g., using Socket.IO) for real-time updates like call status, notifications, and presence information.
+Tech Stack:
+Frontend:
+
+React Native for cross-platform development (iOS & Android).
+Backend:
+
+Node.js with Express or NestJS for API development.
+PostgreSQL for data storage.
+Asterisk server on Docker for VoIP functionalities.
+DevOps:
+
+Docker for containerized deployment of Asterisk and backend services.
+Nginx for load balancing (optional).
+Workflow:
+User Registration:
+
+User signs up with email and phone number.
+Verify email or phone number using OTP.
+Authentication:
+
+User logs in and receives a JWT token for secure access.
+Store tokens securely on the client (e.g., AsyncStorage for React Native).
+VoIP Call:
+
+App fetches contacts from the database and displays registered users.
+User initiates a call; SIP request is sent to the Asterisk server.
+Asterisk server manages call routing and media streaming.
+Call Logs:
+
+On call completion, update call logs in the PostgreSQL database.
