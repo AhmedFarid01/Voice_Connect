@@ -113,14 +113,14 @@ export default function CallPage() {
             <CardTitle>
               <div className="flex items-center gap-2">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Initializing call...
+                Setting up Media Devices
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p>Setting up your media devices...</p>
+            <p>Please allow access to your camera and microphone when prompted.</p>
             <p className="text-sm text-muted-foreground">
-              Please allow access to your camera and microphone when prompted.
+              If permissions were denied, please check your browser settings and try again.
             </p>
           </CardContent>
           <CardFooter className="flex gap-2">
@@ -145,7 +145,7 @@ export default function CallPage() {
           <CardHeader>
             <CardTitle className="text-destructive flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" />
-              Media Setup Error
+              Connection Error
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

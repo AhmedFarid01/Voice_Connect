@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSocket } from './use-socket';
+import { useToast } from './use-toast';
 
 const configuration = {
   iceServers: [
@@ -15,6 +16,7 @@ interface PeerConnection {
 
 export function useWebRTC(userId: number) {
   const socket = useSocket();
+  const { toast } = useToast();
   const [isCallActive, setIsCallActive] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<number, MediaStream>>(new Map());
@@ -24,7 +26,8 @@ export function useWebRTC(userId: number) {
 
   const peerConnections = useRef<Map<number, PeerConnection>>(new Map());
   const currentCallId = useRef<number | null>(null);
-  const existingStream = useRef<MediaStream | null>(null);
+  const mediaDeviceRetries = useRef(0);
+  const maxMediaRetries = 3;
 
   const cleanup = useCallback(() => {
     console.log('Cleaning up WebRTC connections and streams...');
@@ -51,24 +54,13 @@ export function useWebRTC(userId: number) {
       }
     }
 
-    if (existingStream.current) {
-      try {
-        existingStream.current.getTracks().forEach(track => {
-          track.stop();
-          track.enabled = false;
-        });
-      } catch (err) {
-        console.error('Error cleaning up existing stream:', err);
-      }
-      existingStream.current = null;
-    }
-
     setLocalStream(null);
     setRemoteStreams(new Map());
     setIsCallActive(false);
     currentCallId.current = null;
     setError(null);
     setIsAudioOnly(false);
+    mediaDeviceRetries.current = 0;
   }, [localStream]);
 
   const endCall = useCallback(() => {
@@ -81,70 +73,73 @@ export function useWebRTC(userId: number) {
   const setupLocalStream = async (audioOnly = false) => {
     try {
       setIsInitializing(true);
-      console.log('Setting up local stream...');
+      console.log('Setting up local stream... (Attempt', mediaDeviceRetries.current + 1, '/', maxMediaRetries, ')');
 
-      // Clean up any existing streams first
-      if (existingStream.current) {
-        existingStream.current.getTracks().forEach(track => {
+      // Clean up any existing streams
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
           track.stop();
           track.enabled = false;
         });
-        existingStream.current = null;
+        setLocalStream(null);
       }
 
-      // Wait a bit for devices to be released
+      // Wait for devices to be released
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       try {
-        if (!audioOnly) {
-          console.log('Attempting to get video and audio...');
-          const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true
-            }, 
-            video: true 
-          });
-          console.log('Successfully got video and audio stream');
-          existingStream.current = stream;
-          setLocalStream(stream);
-          setIsAudioOnly(false);
-          setIsInitializing(false);
-          return stream;
-        } else {
-          console.log('Setting up audio-only stream...');
-          const audioStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true
-            }, 
-            video: false 
-          });
-          console.log('Successfully got audio-only stream');
-          existingStream.current = audioStream;
-          setLocalStream(audioStream);
-          setIsAudioOnly(true);
-          setIsInitializing(false);
-          return audioStream;
-        }
+        const constraints = {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: !audioOnly ? {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'
+          } : false
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Successfully got media stream:', audioOnly ? 'audio-only' : 'audio+video');
+        setLocalStream(stream);
+        setIsAudioOnly(audioOnly);
+        setIsInitializing(false);
+        mediaDeviceRetries.current = 0;
+        return stream;
       } catch (err: any) {
         console.error('Media access error:', err.name, err);
-        if (err.name === 'NotAllowedError') {
-          setError('Media access denied. Please grant permissions and try again.');
-        } else if (err.name === 'NotReadableError') {
-          setError('Could not access media devices. Please ensure no other application is using your camera/microphone and refresh the page.');
-          cleanup();
-        } else if (err.name === 'NotFoundError') {
-          setError('No media devices found. Please check your camera/microphone connections.');
-        } else {
-          setError('Could not access media devices. Please check your hardware and browser settings.');
+        mediaDeviceRetries.current++;
+
+        if (mediaDeviceRetries.current < maxMediaRetries) {
+          console.log('Retrying media access...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return setupLocalStream(audioOnly);
         }
+
+        if (err.name === 'NotAllowedError') {
+          setError('Media access denied. Please grant camera and microphone permissions.');
+        } else if (err.name === 'NotReadableError') {
+          setError('Could not access media devices. Please ensure no other application is using your camera/microphone.');
+        } else if (err.name === 'NotFoundError') {
+          setError('No media devices found. Please check your camera and microphone connections.');
+        } else {
+          setError('Media device error. Please check your hardware and browser settings.');
+        }
+
+        toast({
+          variant: "destructive",
+          title: "Media Access Error",
+          description: err.message || "Failed to access media devices"
+        });
+
         setIsInitializing(false);
         return null;
       }
     } catch (err) {
-      console.error('Fatal error accessing media devices:', err);
-      setError('Could not initialize media devices. Please check your hardware and browser permissions.');
+      console.error('Fatal error setting up media devices:', err);
+      setError('Could not initialize media devices.');
       setIsInitializing(false);
       return null;
     }
@@ -171,19 +166,23 @@ export function useWebRTC(userId: number) {
       if (localStream) {
         console.log('Adding local tracks to peer connection');
         localStream.getTracks().forEach(track => {
-          pc.addTrack(track, localStream);
+          if (localStream) {
+            pc.addTrack(track, localStream);
+          }
         });
       }
 
       pc.ontrack = (event) => {
-        console.log('Received remote track');
-        const stream = event.streams[0];
-        setRemoteStreams(prev => new Map(prev).set(peerId, stream));
+        console.log('Received remote track from peer:', peerId);
+        const [stream] = event.streams;
+        if (stream) {
+          setRemoteStreams(prev => new Map(prev).set(peerId, stream));
+        }
       };
 
       pc.onicecandidate = (event) => {
         if (event.candidate && socket) {
-          console.log('Sending ICE candidate');
+          console.log('Sending ICE candidate to peer:', peerId);
           socket.emit('signal', {
             to: peerId,
             signal: { type: 'candidate', candidate: event.candidate }
@@ -204,7 +203,7 @@ export function useWebRTC(userId: number) {
       return pc;
     } catch (err) {
       console.error('Error creating peer connection:', err);
-      setError('Failed to create peer connection. Please check your internet connection.');
+      setError('Failed to create peer connection.');
       return null;
     }
   }, [socket, localStream, endCall]);
@@ -216,6 +215,7 @@ export function useWebRTC(userId: number) {
     }
 
     try {
+      cleanup(); // Clean up any existing call state
       console.log('Starting call with:', receiverId, 'Audio only:', audioOnly);
       const stream = await setupLocalStream(audioOnly);
       if (!stream) return;
@@ -225,6 +225,7 @@ export function useWebRTC(userId: number) {
     } catch (err) {
       console.error('Error starting call:', err);
       setError('Failed to start call');
+      cleanup();
     }
   };
 
@@ -238,6 +239,14 @@ export function useWebRTC(userId: number) {
     socket.on('call:incoming', async ({ callId, from: peerId }) => {
       console.log('Incoming call from:', peerId);
       currentCallId.current = callId;
+
+      // Set up local stream before creating peer connection
+      const stream = await setupLocalStream(false);
+      if (!stream) {
+        socket.emit('call:reject', { callId });
+        return;
+      }
+
       const pc = await createPeerConnection(peerId);
       if (!pc) return;
 
@@ -254,13 +263,15 @@ export function useWebRTC(userId: number) {
         });
       } catch (err) {
         console.error('Error creating answer:', err);
-        setError('Failed to answer call');
+        setError('Failed to establish connection');
+        cleanup();
       }
     });
 
     socket.on('call:started', ({ callId }) => {
       console.log('Call started:', callId);
       currentCallId.current = callId;
+      setIsCallActive(true);
     });
 
     socket.on('call:ended', () => {
@@ -269,7 +280,7 @@ export function useWebRTC(userId: number) {
     });
 
     socket.on('signal', async ({ from: peerId, signal }) => {
-      console.log('Received signal from:', peerId, signal.type);
+      console.log('Received signal from peer:', peerId, signal.type);
       let pc = peerConnections.current.get(peerId)?.connection;
 
       if (!pc) {
@@ -312,7 +323,7 @@ export function useWebRTC(userId: number) {
       socket.off('signal');
       cleanup();
     };
-  }, [socket, createPeerConnection, cleanup]);
+  }, [socket, createPeerConnection, cleanup, setupLocalStream]);
 
   return {
     startCall,
