@@ -19,7 +19,6 @@ export function useWebRTC(userId: number) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<number, MediaStream>>(new Map());
   const [error, setError] = useState<string | null>(null);
-  const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isAudioOnly, setIsAudioOnly] = useState(false);
 
@@ -27,7 +26,6 @@ export function useWebRTC(userId: number) {
   const currentCallId = useRef<number | null>(null);
   const existingStream = useRef<MediaStream | null>(null);
 
-  // Define cleanup function first
   const cleanup = useCallback(() => {
     // Clean up peer connections
     peerConnections.current.forEach(({ connection }) => connection.close());
@@ -51,21 +49,16 @@ export function useWebRTC(userId: number) {
     setLocalStream(null);
     setRemoteStreams(new Map());
     setIsCallActive(false);
-    setActiveRoomId(null);
     currentCallId.current = null;
     setError(null);
     setIsAudioOnly(false);
   }, [localStream]);
 
-  const leaveRoom = useCallback(() => {
-    if (!socket || !activeRoomId) return;
-
-    socket.emit('room:leave', { roomId: activeRoomId });
-    if (currentCallId.current) {
-      socket.emit('call:end', { callId: currentCallId.current });
-    }
+  const endCall = useCallback(() => {
+    if (!socket || !currentCallId.current) return;
+    socket.emit('call:end', { callId: currentCallId.current });
     cleanup();
-  }, [socket, activeRoomId, cleanup]);
+  }, [socket, cleanup]);
 
   const setupLocalStream = async (audioOnly = false) => {
     try {
@@ -121,7 +114,7 @@ export function useWebRTC(userId: number) {
         if (err.name === 'NotAllowedError') {
           setError('Media access denied. Please grant permissions and try again.');
         } else if (err.name === 'NotReadableError') {
-          setError('Could not access media devices. Please ensure no other application is using your camera/microphone, refresh the page, and try again.');
+          setError('Could not access media devices. Please ensure no other application is using your camera/microphone.');
           cleanup();
         } else {
           setError('Could not access media devices. Please check your hardware and browser settings.');
@@ -159,28 +152,19 @@ export function useWebRTC(userId: number) {
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate && socket && activeRoomId) {
+        if (event.candidate && socket) {
           socket.emit('signal', {
             to: peerId,
-            signal: { type: 'candidate', candidate: event.candidate },
-            roomId: activeRoomId
+            signal: { type: 'candidate', candidate: event.candidate }
           });
         }
       };
 
       pc.oniceconnectionstatechange = () => {
         console.log(`ICE Connection State with peer ${peerId}:`, pc.iceConnectionState);
-        if (pc.iceConnectionState === 'failed') {
-          if (connectionRetries.current < maxRetries) {
-            console.log('Retrying connection...');
-            connectionRetries.current++;
-            pc.restartIce();
-          } else {
-            setError('Connection failed after multiple attempts. Please check your internet connection.');
-            leaveRoom();
-          }
-        } else if (pc.iceConnectionState === 'connected') {
-          connectionRetries.current = 0;
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+          setError('Connection lost. Please check your internet connection.');
+          endCall();
         }
       };
 
@@ -191,62 +175,24 @@ export function useWebRTC(userId: number) {
       setError('Failed to create peer connection. Please check your internet connection.');
       return null;
     }
-  }, [socket, localStream, activeRoomId, leaveRoom]);
+  }, [socket, localStream, endCall]);
 
-  const joinAudioOnly = async (roomId: number) => {
+  const startCall = async (receiverId: number, audioOnly = false) => {
     if (!socket) {
       setError('Socket connection not available');
       return;
     }
 
     try {
-      const stream = await setupLocalStream(true);
+      const stream = await setupLocalStream(audioOnly);
       if (!stream) return;
 
-      setActiveRoomId(roomId);
+      socket.emit('call:start', { receiverId });
       setIsCallActive(true);
-      socket.emit('room:join', { roomId });
     } catch (err) {
-      setError('Failed to join room in audio-only mode');
+      setError('Failed to start call');
     }
   };
-
-  const joinRoom = async (roomId: number) => {
-    if (!socket) {
-      setError('Socket connection not available');
-      return;
-    }
-
-    try {
-      const stream = await setupLocalStream(false);
-      if (!stream) return;
-
-      setActiveRoomId(roomId);
-      setIsCallActive(true);
-      socket.emit('room:join', { roomId });
-    } catch (err) {
-      setError('Failed to join room');
-    }
-  };
-
-  const createRoom = async (name: string) => {
-    if (!socket) {
-      setError('Socket connection not available');
-      return;
-    }
-
-    try {
-      const stream = await setupLocalStream(false);
-      if (!stream) return;
-
-      socket.emit('room:create', { name });
-    } catch (err) {
-      setError('Failed to create room');
-    }
-  };
-
-  const connectionRetries = useRef(0);
-  const maxRetries = 3;
 
   useEffect(() => {
     if (!socket) {
@@ -255,44 +201,34 @@ export function useWebRTC(userId: number) {
       return;
     }
 
-    socket.on('room:created', (room) => {
-      console.log('Room created:', room);
-      setActiveRoomId(room.id);
-      setIsCallActive(true);
-    });
-
-    socket.on('user:joined', async ({ userId: peerId }) => {
-      console.log('User joined:', peerId);
+    socket.on('call:incoming', async ({ callId, from: peerId }) => {
+      console.log('Incoming call from:', peerId);
+      currentCallId.current = callId;
       const pc = await createPeerConnection(peerId);
       if (!pc) return;
 
       try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
 
         socket.emit('signal', {
           to: peerId,
-          signal: { type: 'offer', sdp: offer },
-          roomId: activeRoomId
+          signal: { type: 'answer', sdp: answer }
         });
       } catch (err) {
-        console.error('Error creating offer:', err);
-        setError('Failed to create call offer');
+        console.error('Error creating answer:', err);
+        setError('Failed to answer call');
       }
     });
 
-    socket.on('user:left', ({ userId: peerId }) => {
-      console.log('User left:', peerId);
-      const peer = peerConnections.current.get(peerId);
-      if (peer) {
-        peer.connection.close();
-        peerConnections.current.delete(peerId);
-        setRemoteStreams(prev => {
-          const next = new Map(prev);
-          next.delete(peerId);
-          return next;
-        });
-      }
+    socket.on('call:started', ({ callId }) => {
+      console.log('Call started:', callId);
+      currentCallId.current = callId;
+    });
+
+    socket.on('call:ended', () => {
+      console.log('Call ended');
+      cleanup();
     });
 
     socket.on('signal', async ({ from: peerId, signal }) => {
@@ -312,8 +248,7 @@ export function useWebRTC(userId: number) {
 
           socket.emit('signal', {
             to: peerId,
-            signal: { type: 'answer', sdp: answer },
-            roomId: activeRoomId
+            signal: { type: 'answer', sdp: answer }
           });
         } else if (signal.type === 'answer') {
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
@@ -327,26 +262,21 @@ export function useWebRTC(userId: number) {
     });
 
     return () => {
-      socket.off('room:created');
-      socket.off('user:joined');
-      socket.off('user:left');
-      socket.off('signal');
+      socket.off('call:incoming');
       socket.off('call:started');
       socket.off('call:ended');
+      socket.off('signal');
       cleanup();
     };
-  }, [socket, createPeerConnection, leaveRoom, cleanup, activeRoomId]);
+  }, [socket, createPeerConnection, cleanup]);
 
   return {
-    createRoom,
-    joinRoom,
-    joinAudioOnly,
-    leaveRoom,
+    startCall,
+    endCall,
     isCallActive,
     localStream,
     remoteStreams,
     error,
-    activeRoomId,
     isInitializing,
     isAudioOnly
   };

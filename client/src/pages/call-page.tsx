@@ -12,11 +12,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { GroupCallGrid } from "@/components/group-call-grid";
-import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, Loader2, RefreshCcw, AlertTriangle } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Loader2, RefreshCcw, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useState as useDialogState } from "react";
 
 export default function CallPage() {
   const { id } = useParams<{ id: string }>();
@@ -25,19 +22,14 @@ export default function CallPage() {
   const socket = useSocket();
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
-  const [isCreateRoomOpen, setIsCreateRoomOpen] = useDialogState(false);
-  const [roomName, setRoomName] = useState("");
 
   const {
-    createRoom,
-    joinRoom,
-    joinAudioOnly,
-    leaveRoom,
+    startCall,
+    endCall,
     isCallActive,
     localStream,
     remoteStreams,
     error: webRTCError,
-    activeRoomId,
     isInitializing,
     isAudioOnly
   } = useWebRTC(user?.id || 0);
@@ -45,52 +37,33 @@ export default function CallPage() {
   useEffect(() => {
     if (!socket || !id) return;
 
-    const roomId = parseInt(id);
-    if (!isNaN(roomId) && !isCallActive && !activeRoomId) {
-      console.log('Attempting to join room:', roomId);
-      joinRoom(roomId);
+    const receiverId = parseInt(id);
+    if (!isNaN(receiverId) && !isCallActive) {
+      console.log('Starting call with:', receiverId);
+      startCall(receiverId, false);
     }
-  }, [id, socket, isCallActive, activeRoomId, joinRoom]);
-
-  const handleCreateRoom = () => {
-    if (!socket) return;
-
-    if (roomName) {
-      createRoom(roomName);
-      setIsCreateRoomOpen(false);
-      setRoomName("");
-    }
-  };
+  }, [id, socket, isCallActive, startCall]);
 
   const handleRetry = () => {
     if (!socket || !id) return;
-    const roomId = parseInt(id);
-    if (!isNaN(roomId)) {
-      console.log('Retrying to join room:', roomId);
-      joinRoom(roomId);
+    const receiverId = parseInt(id);
+    if (!isNaN(receiverId)) {
+      console.log('Retrying call with:', receiverId);
+      startCall(receiverId, false);
     }
-  };
-
-  const cleanup = () => {
-    // Add your cleanup logic here if needed.  Example:
-    // if (localStream) {
-    //   localStream.getTracks().forEach(track => track.stop());
-    // }
   };
 
   const handleJoinAudioOnly = () => {
     if (!socket || !id) return;
-
-    cleanup(); 
-    const roomId = parseInt(id);
-    if (!isNaN(roomId)) {
-      console.log('Joining room in audio-only mode:', roomId);
-      joinAudioOnly(roomId);
+    const receiverId = parseInt(id);
+    if (!isNaN(receiverId)) {
+      console.log('Starting audio-only call with:', receiverId);
+      startCall(receiverId, true);
     }
   };
 
   const handleEndCall = () => {
-    leaveRoom();
+    endCall();
     setLocation("/");
   };
 
@@ -157,7 +130,7 @@ export default function CallPage() {
             </Button>
             <Button onClick={handleJoinAudioOnly} variant="secondary" className="flex-1">
               <Mic className="h-4 w-4 mr-2" />
-              Join Audio Only
+              Audio Only
             </Button>
           </CardFooter>
         </Card>
@@ -188,7 +161,7 @@ export default function CallPage() {
             </Button>
             <Button onClick={handleJoinAudioOnly} variant="secondary" className="flex-1">
               <Mic className="h-4 w-4 mr-2" />
-              Join Audio Only
+              Audio Only
             </Button>
           </CardFooter>
         </Card>
@@ -203,38 +176,15 @@ export default function CallPage() {
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
               <span>
-                {isCallActive ? `Active Call - Room ${activeRoomId}` : "Connecting..."}
+                {isCallActive ? "Active Call" : "Connecting..."}
               </span>
               {isAudioOnly && (
-                <Alert className="ml-4">
+                <Alert>
                   <AlertDescription>
                     Running in audio-only mode
                   </AlertDescription>
                 </Alert>
               )}
-              <Dialog open={isCreateRoomOpen} onOpenChange={setIsCreateRoomOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="ml-4">
-                    <Users className="h-4 w-4 mr-2" />
-                    New Room
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create New Room</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <Input
-                      placeholder="Room Name"
-                      value={roomName}
-                      onChange={(e) => setRoomName(e.target.value)}
-                    />
-                    <Button onClick={handleCreateRoom} className="w-full">
-                      Create Room
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
             </CardTitle>
           </CardHeader>
           <CardContent>
