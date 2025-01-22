@@ -60,34 +60,58 @@ export function useWebRTC(userId: number) {
       setIsInitializing(true);
       console.log('Setting up local stream...');
 
-      // Try video + audio first
+      // Add timeout for getUserMedia
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout waiting for media permissions')), 10000);
+      });
+
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
+        // Try video + audio with timeout
+        const mediaPromise = navigator.mediaDevices.getUserMedia({ 
           audio: true, 
           video: true 
         });
+
+        const stream = await Promise.race([mediaPromise, timeoutPromise]);
+        console.log('Successfully got video and audio stream');
         setLocalStream(stream);
         setIsInitializing(false);
         return stream;
       } catch (videoErr) {
-        console.log('Video unavailable, falling back to audio only:', videoErr);
+        console.log('Video stream failed:', videoErr);
 
-        // Fallback to audio only
+        // Check if it's a permission error
+        if (videoErr.name === 'NotAllowedError') {
+          setError('Camera and microphone access denied. Please grant permissions and try again.');
+          setIsInitializing(false);
+          return null;
+        }
+
+        // If video fails, try audio only
+        console.log('Falling back to audio only...');
         try {
           const audioStream = await navigator.mediaDevices.getUserMedia({ 
             audio: true, 
             video: false 
           });
+          console.log('Successfully got audio-only stream');
           setLocalStream(audioStream);
           setIsInitializing(false);
           return audioStream;
         } catch (audioErr) {
-          throw new Error('Neither audio nor video available');
+          console.log('Audio stream failed:', audioErr);
+          if (audioErr.name === 'NotAllowedError') {
+            setError('Microphone access denied. Please grant audio permissions and try again.');
+          } else {
+            setError('Could not access any media devices. Please ensure a microphone is connected and try again.');
+          }
+          setIsInitializing(false);
+          return null;
         }
       }
     } catch (err) {
-      console.error('Error accessing media devices:', err);
-      setError('Could not access camera or microphone. Please ensure they are connected, not in use by another application, and permissions are granted.');
+      console.error('Fatal error accessing media devices:', err);
+      setError('Could not initialize media devices. Please check your hardware and browser permissions.');
       setIsInitializing(false);
       return null;
     }

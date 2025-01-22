@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { GroupCallGrid } from "@/components/group-call-grid";
-import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, Loader2 } from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, Loader2, RefreshCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useState as useDialogState } from "react";
@@ -58,6 +58,15 @@ export default function CallPage() {
       createRoom(roomName);
       setIsCreateRoomOpen(false);
       setRoomName("");
+    }
+  };
+
+  const handleRetry = () => {
+    if (!socket || !id) return;
+    const roomId = parseInt(id);
+    if (!isNaN(roomId)) {
+      console.log('Retrying to join room:', roomId);
+      joinRoom(roomId);
     }
   };
 
@@ -112,13 +121,22 @@ export default function CallPage() {
             <CardTitle>
               <div className="flex items-center gap-2">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Setting up call...
+                Setting up media devices...
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <p>Please allow camera and microphone access when prompted...</p>
+            <p className="text-sm text-muted-foreground">
+              If permissions were denied, please check your browser settings and try again.
+            </p>
           </CardContent>
+          <CardFooter>
+            <Button onClick={handleRetry} className="w-full">
+              <RefreshCcw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </CardFooter>
         </Card>
       </div>
     );
@@ -129,13 +147,20 @@ export default function CallPage() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-[400px]">
           <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
+            <CardTitle className="text-destructive">Media Setup Error</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <p>{webRTCError}</p>
+            <p className="text-sm text-muted-foreground">
+              Try checking your camera and microphone permissions in your browser settings.
+            </p>
           </CardContent>
-          <CardFooter>
-            <Button onClick={() => setLocation("/")} className="w-full">
+          <CardFooter className="flex gap-2">
+            <Button onClick={handleRetry} className="flex-1">
+              <RefreshCcw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+            <Button onClick={() => setLocation("/")} variant="outline" className="flex-1">
               Return Home
             </Button>
           </CardFooter>
