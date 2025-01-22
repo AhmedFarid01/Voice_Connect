@@ -12,9 +12,10 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { GroupCallGrid } from "@/components/group-call-grid";
-import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, Loader2, RefreshCcw } from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, Loader2, RefreshCcw, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useState as useDialogState } from "react";
 
 export default function CallPage() {
@@ -36,7 +37,8 @@ export default function CallPage() {
     remoteStreams,
     error: webRTCError,
     activeRoomId,
-    isInitializing
+    isInitializing,
+    isAudioOnly
   } = useWebRTC(user?.id || 0);
 
   useEffect(() => {
@@ -50,9 +52,7 @@ export default function CallPage() {
   }, [id, socket, isCallActive, activeRoomId, joinRoom]);
 
   const handleCreateRoom = () => {
-    if (!socket) {
-      return;
-    }
+    if (!socket) return;
 
     if (roomName) {
       createRoom(roomName);
@@ -85,7 +85,7 @@ export default function CallPage() {
   };
 
   const toggleVideo = () => {
-    if (localStream) {
+    if (localStream && !isAudioOnly) {
       localStream.getVideoTracks().forEach((track) => {
         track.enabled = !track.enabled;
       });
@@ -121,22 +121,16 @@ export default function CallPage() {
             <CardTitle>
               <div className="flex items-center gap-2">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Setting up media devices...
+                Initializing call...
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p>Please allow camera and microphone access when prompted...</p>
+            <p>Setting up your media devices...</p>
             <p className="text-sm text-muted-foreground">
-              If permissions were denied, please check your browser settings and try again.
+              Please allow access to your camera and microphone when prompted.
             </p>
           </CardContent>
-          <CardFooter>
-            <Button onClick={handleRetry} className="w-full">
-              <RefreshCcw className="h-4 w-4 mr-2" />
-              Retry
-            </Button>
-          </CardFooter>
         </Card>
       </div>
     );
@@ -147,7 +141,10 @@ export default function CallPage() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-[400px]">
           <CardHeader>
-            <CardTitle className="text-destructive">Media Setup Error</CardTitle>
+            <CardTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Media Setup Error
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p>{webRTCError}</p>
@@ -178,6 +175,13 @@ export default function CallPage() {
               <span>
                 {isCallActive ? `Active Call - Room ${activeRoomId}` : "Connecting..."}
               </span>
+              {isAudioOnly && (
+                <Alert variant="warning" className="ml-4">
+                  <AlertDescription>
+                    Running in audio-only mode. Video is unavailable.
+                  </AlertDescription>
+                </Alert>
+              )}
               <Dialog open={isCreateRoomOpen} onOpenChange={setIsCreateRoomOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="ml-4">
@@ -224,18 +228,20 @@ export default function CallPage() {
                 <Mic className="h-4 w-4" />
               )}
             </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={toggleVideo}
-              className={!isVideoEnabled ? "bg-destructive" : ""}
-            >
-              {isVideoEnabled ? (
-                <Video className="h-4 w-4" />
-              ) : (
-                <VideoOff className="h-4 w-4" />
-              )}
-            </Button>
+            {!isAudioOnly && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={toggleVideo}
+                className={!isVideoEnabled ? "bg-destructive" : ""}
+              >
+                {isVideoEnabled ? (
+                  <Video className="h-4 w-4" />
+                ) : (
+                  <VideoOff className="h-4 w-4" />
+                )}
+              </Button>
+            )}
             <Button
               variant="destructive"
               size="icon"

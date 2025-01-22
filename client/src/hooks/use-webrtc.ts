@@ -24,6 +24,7 @@ export function useWebRTC(userId: number) {
   const [error, setError] = useState<string | null>(null);
   const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isAudioOnly, setIsAudioOnly] = useState(false); // Added state variable
 
   const peerConnections = useRef<Map<number, PeerConnection>>(new Map());
   const currentCallId = useRef<number | null>(null);
@@ -34,15 +35,18 @@ export function useWebRTC(userId: number) {
   const cleanup = useCallback(() => {
     peerConnections.current.forEach(({ connection }) => connection.close());
     peerConnections.current.clear();
-    localStream?.getTracks().forEach(track => track.stop());
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+    }
     setLocalStream(null);
     setRemoteStreams(new Map());
     setIsCallActive(false);
     setActiveRoomId(null);
     currentCallId.current = null;
     setError(null);
+    setIsAudioOnly(false); // Reset isAudioOnly
     connectionRetries.current = 0;
-  }, []);
+  }, [localStream]);
 
   // Define leaveRoom before it's used in createPeerConnection
   const leaveRoom = useCallback(() => {
@@ -50,7 +54,7 @@ export function useWebRTC(userId: number) {
 
     socket.emit('room:leave', { roomId: activeRoomId });
     if (currentCallId.current) {
-      socket.emit('call:end', { callId: currentCallId.current, roomId: activeRoomId });
+      socket.emit('call:end', { callId: currentCallId.current });
     }
     cleanup();
   }, [socket, activeRoomId, cleanup]);
@@ -60,27 +64,20 @@ export function useWebRTC(userId: number) {
       setIsInitializing(true);
       console.log('Setting up local stream...');
 
-      // Add timeout for getUserMedia
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout waiting for media permissions')), 10000);
-      });
-
       try {
-        // Try video + audio with timeout
-        const mediaPromise = navigator.mediaDevices.getUserMedia({ 
+        console.log('Attempting to get video and audio...');
+        const stream = await navigator.mediaDevices.getUserMedia({ 
           audio: true, 
           video: true 
         });
-
-        const stream = await Promise.race([mediaPromise, timeoutPromise]);
         console.log('Successfully got video and audio stream');
         setLocalStream(stream);
+        setIsAudioOnly(false);
         setIsInitializing(false);
         return stream;
-      } catch (videoErr) {
-        console.log('Video stream failed:', videoErr);
+      } catch (videoErr: any) {
+        console.log('Video stream failed:', videoErr.name);
 
-        // Check if it's a permission error
         if (videoErr.name === 'NotAllowedError') {
           setError('Camera and microphone access denied. Please grant permissions and try again.');
           setIsInitializing(false);
@@ -96,10 +93,11 @@ export function useWebRTC(userId: number) {
           });
           console.log('Successfully got audio-only stream');
           setLocalStream(audioStream);
+          setIsAudioOnly(true);
           setIsInitializing(false);
           return audioStream;
-        } catch (audioErr) {
-          console.log('Audio stream failed:', audioErr);
+        } catch (audioErr: any) {
+          console.log('Audio stream failed:', audioErr.name);
           if (audioErr.name === 'NotAllowedError') {
             setError('Microphone access denied. Please grant audio permissions and try again.');
           } else {
@@ -316,6 +314,7 @@ export function useWebRTC(userId: number) {
     remoteStreams,
     error,
     activeRoomId,
-    isInitializing
+    isInitializing,
+    isAudioOnly // Expose isAudioOnly
   };
 }
