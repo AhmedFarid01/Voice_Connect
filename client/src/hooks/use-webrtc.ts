@@ -24,7 +24,7 @@ export function useWebRTC(userId: number) {
   const [error, setError] = useState<string | null>(null);
   const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [isAudioOnly, setIsAudioOnly] = useState(false); // Added state variable
+  const [isAudioOnly, setIsAudioOnly] = useState(false);
 
   const peerConnections = useRef<Map<number, PeerConnection>>(new Map());
   const currentCallId = useRef<number | null>(null);
@@ -44,7 +44,7 @@ export function useWebRTC(userId: number) {
     setActiveRoomId(null);
     currentCallId.current = null;
     setError(null);
-    setIsAudioOnly(false); // Reset isAudioOnly
+    setIsAudioOnly(false);
     connectionRetries.current = 0;
   }, [localStream]);
 
@@ -59,34 +59,25 @@ export function useWebRTC(userId: number) {
     cleanup();
   }, [socket, activeRoomId, cleanup]);
 
-  const setupLocalStream = async () => {
+  const setupLocalStream = async (audioOnly = false) => {
     try {
       setIsInitializing(true);
       console.log('Setting up local stream...');
 
       try {
-        console.log('Attempting to get video and audio...');
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: true, 
-          video: true 
-        });
-        console.log('Successfully got video and audio stream');
-        setLocalStream(stream);
-        setIsAudioOnly(false);
-        setIsInitializing(false);
-        return stream;
-      } catch (videoErr: any) {
-        console.log('Video stream failed:', videoErr.name);
-
-        if (videoErr.name === 'NotAllowedError') {
-          setError('Camera and microphone access denied. Please grant permissions and try again.');
+        if (!audioOnly) {
+          console.log('Attempting to get video and audio...');
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: true, 
+            video: true 
+          });
+          console.log('Successfully got video and audio stream');
+          setLocalStream(stream);
+          setIsAudioOnly(false);
           setIsInitializing(false);
-          return null;
-        }
-
-        // If video fails, try audio only
-        console.log('Falling back to audio only...');
-        try {
+          return stream;
+        } else {
+          console.log('Setting up audio-only stream...');
           const audioStream = await navigator.mediaDevices.getUserMedia({ 
             audio: true, 
             video: false 
@@ -96,16 +87,16 @@ export function useWebRTC(userId: number) {
           setIsAudioOnly(true);
           setIsInitializing(false);
           return audioStream;
-        } catch (audioErr: any) {
-          console.log('Audio stream failed:', audioErr.name);
-          if (audioErr.name === 'NotAllowedError') {
-            setError('Microphone access denied. Please grant audio permissions and try again.');
-          } else {
-            setError('Could not access any media devices. Please ensure a microphone is connected and try again.');
-          }
-          setIsInitializing(false);
-          return null;
         }
+      } catch (err: any) {
+        console.error('Media access error:', err.name);
+        if (err.name === 'NotAllowedError') {
+          setError('Media access denied. Please grant the requested permissions and try again.');
+        } else {
+          setError('Could not access media devices. Please check your hardware and browser settings.');
+        }
+        setIsInitializing(false);
+        return null;
       }
     } catch (err) {
       console.error('Fatal error accessing media devices:', err);
@@ -127,9 +118,7 @@ export function useWebRTC(userId: number) {
 
       if (localStream) {
         localStream.getTracks().forEach(track => {
-          if (localStream) {
-            pc.addTrack(track, localStream);
-          }
+          pc.addTrack(track, localStream);
         });
       }
 
@@ -156,7 +145,7 @@ export function useWebRTC(userId: number) {
             connectionRetries.current++;
             pc.restartIce();
           } else {
-            setError('Connection failed after multiple attempts. Please check your internet connection and try again.');
+            setError('Connection failed after multiple attempts. Please check your internet connection.');
             leaveRoom();
           }
         } else if (pc.iceConnectionState === 'connected') {
@@ -173,17 +162,21 @@ export function useWebRTC(userId: number) {
     }
   }, [socket, localStream, activeRoomId, leaveRoom]);
 
-  const createRoom = async (name: string) => {
+  const joinAudioOnly = async (roomId: number) => {
     if (!socket) {
       setError('Socket connection not available');
       return;
     }
 
     try {
-      await setupLocalStream();
-      socket.emit('room:create', { name });
+      const stream = await setupLocalStream(true);
+      if (!stream) return;
+
+      setActiveRoomId(roomId);
+      setIsCallActive(true);
+      socket.emit('room:join', { roomId });
     } catch (err) {
-      setError('Failed to create room');
+      setError('Failed to join room in audio-only mode');
     }
   };
 
@@ -194,7 +187,7 @@ export function useWebRTC(userId: number) {
     }
 
     try {
-      const stream = await setupLocalStream();
+      const stream = await setupLocalStream(false);
       if (!stream) return;
 
       setActiveRoomId(roomId);
@@ -205,6 +198,21 @@ export function useWebRTC(userId: number) {
     }
   };
 
+  const createRoom = async (name: string) => {
+    if (!socket) {
+      setError('Socket connection not available');
+      return;
+    }
+
+    try {
+      const stream = await setupLocalStream(false);
+      if (!stream) return;
+
+      socket.emit('room:create', { name });
+    } catch (err) {
+      setError('Failed to create room');
+    }
+  };
 
   useEffect(() => {
     if (!socket) {
@@ -216,7 +224,7 @@ export function useWebRTC(userId: number) {
     socket.on('room:created', (room) => {
       console.log('Room created:', room);
       setActiveRoomId(room.id);
-      joinRoom(room.id);
+      setIsCallActive(true);
     });
 
     socket.on('user:joined', async ({ userId: peerId }) => {
@@ -284,16 +292,6 @@ export function useWebRTC(userId: number) {
       }
     });
 
-    socket.on('call:started', ({ callId }) => {
-      console.log('Call started:', callId);
-      currentCallId.current = callId;
-    });
-
-    socket.on('call:ended', () => {
-      console.log('Call ended');
-      leaveRoom();
-    });
-
     return () => {
       socket.off('room:created');
       socket.off('user:joined');
@@ -308,6 +306,7 @@ export function useWebRTC(userId: number) {
   return {
     createRoom,
     joinRoom,
+    joinAudioOnly,
     leaveRoom,
     isCallActive,
     localStream,
@@ -315,6 +314,6 @@ export function useWebRTC(userId: number) {
     error,
     activeRoomId,
     isInitializing,
-    isAudioOnly // Expose isAudioOnly
+    isAudioOnly
   };
 }

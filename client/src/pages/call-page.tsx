@@ -31,6 +31,7 @@ export default function CallPage() {
   const {
     createRoom,
     joinRoom,
+    joinAudioOnly,
     leaveRoom,
     isCallActive,
     localStream,
@@ -67,6 +68,15 @@ export default function CallPage() {
     if (!isNaN(roomId)) {
       console.log('Retrying to join room:', roomId);
       joinRoom(roomId);
+    }
+  };
+
+  const handleJoinAudioOnly = () => {
+    if (!socket || !id) return;
+    const roomId = parseInt(id);
+    if (!isNaN(roomId)) {
+      console.log('Joining room in audio-only mode:', roomId);
+      joinAudioOnly(roomId);
     }
   };
 
@@ -131,6 +141,16 @@ export default function CallPage() {
               Please allow access to your camera and microphone when prompted.
             </p>
           </CardContent>
+          <CardFooter className="flex gap-2">
+            <Button onClick={handleRetry} className="flex-1">
+              <RefreshCcw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+            <Button onClick={handleJoinAudioOnly} variant="secondary" className="flex-1">
+              <Mic className="h-4 w-4 mr-2" />
+              Join Audio Only
+            </Button>
+          </CardFooter>
         </Card>
       </div>
     );
@@ -157,8 +177,9 @@ export default function CallPage() {
               <RefreshCcw className="h-4 w-4 mr-2" />
               Try Again
             </Button>
-            <Button onClick={() => setLocation("/")} variant="outline" className="flex-1">
-              Return Home
+            <Button onClick={handleJoinAudioOnly} variant="secondary" className="flex-1">
+              <Mic className="h-4 w-4 mr-2" />
+              Join Audio Only
             </Button>
           </CardFooter>
         </Card>
@@ -176,9 +197,9 @@ export default function CallPage() {
                 {isCallActive ? `Active Call - Room ${activeRoomId}` : "Connecting..."}
               </span>
               {isAudioOnly && (
-                <Alert variant="warning" className="ml-4">
+                <Alert className="ml-4">
                   <AlertDescription>
-                    Running in audio-only mode. Video is unavailable.
+                    Running in audio-only mode
                   </AlertDescription>
                 </Alert>
               )}
