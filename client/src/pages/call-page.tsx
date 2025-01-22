@@ -71,8 +71,17 @@ export default function CallPage() {
     }
   };
 
+  const cleanup = () => {
+    // Add your cleanup logic here if needed.  Example:
+    // if (localStream) {
+    //   localStream.getTracks().forEach(track => track.stop());
+    // }
+  };
+
   const handleJoinAudioOnly = () => {
     if (!socket || !id) return;
+
+    cleanup(); 
     const roomId = parseInt(id);
     if (!isNaN(roomId)) {
       console.log('Joining room in audio-only mode:', roomId);

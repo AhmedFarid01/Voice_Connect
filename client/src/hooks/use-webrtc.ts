@@ -4,10 +4,7 @@ import { useSocket } from './use-socket';
 const configuration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
+    { urls: 'stun:stun1.l.google.com:19302' }
   ]
 };
 
@@ -28,16 +25,29 @@ export function useWebRTC(userId: number) {
 
   const peerConnections = useRef<Map<number, PeerConnection>>(new Map());
   const currentCallId = useRef<number | null>(null);
-  const connectionRetries = useRef(0);
-  const maxRetries = 3;
+  const existingStream = useRef<MediaStream | null>(null);
 
   // Define cleanup function first
   const cleanup = useCallback(() => {
+    // Clean up peer connections
     peerConnections.current.forEach(({ connection }) => connection.close());
     peerConnections.current.clear();
+
+    // Clean up media streams
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+      localStream.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
     }
+    if (existingStream.current) {
+      existingStream.current.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
+      existingStream.current = null;
+    }
+
     setLocalStream(null);
     setRemoteStreams(new Map());
     setIsCallActive(false);
@@ -45,10 +55,8 @@ export function useWebRTC(userId: number) {
     currentCallId.current = null;
     setError(null);
     setIsAudioOnly(false);
-    connectionRetries.current = 0;
   }, [localStream]);
 
-  // Define leaveRoom before it's used in createPeerConnection
   const leaveRoom = useCallback(() => {
     if (!socket || !activeRoomId) return;
 
@@ -64,14 +72,30 @@ export function useWebRTC(userId: number) {
       setIsInitializing(true);
       console.log('Setting up local stream...');
 
+      // Clean up any existing streams first
+      if (existingStream.current) {
+        existingStream.current.getTracks().forEach(track => {
+          track.stop();
+          track.enabled = false;
+        });
+        existingStream.current = null;
+      }
+
+      // Wait a bit for devices to be released
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       try {
         if (!audioOnly) {
           console.log('Attempting to get video and audio...');
           const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: true, 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true
+            }, 
             video: true 
           });
           console.log('Successfully got video and audio stream');
+          existingStream.current = stream;
           setLocalStream(stream);
           setIsAudioOnly(false);
           setIsInitializing(false);
@@ -79,10 +103,14 @@ export function useWebRTC(userId: number) {
         } else {
           console.log('Setting up audio-only stream...');
           const audioStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: true, 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true
+            }, 
             video: false 
           });
           console.log('Successfully got audio-only stream');
+          existingStream.current = audioStream;
           setLocalStream(audioStream);
           setIsAudioOnly(true);
           setIsInitializing(false);
@@ -91,7 +119,10 @@ export function useWebRTC(userId: number) {
       } catch (err: any) {
         console.error('Media access error:', err.name);
         if (err.name === 'NotAllowedError') {
-          setError('Media access denied. Please grant the requested permissions and try again.');
+          setError('Media access denied. Please grant permissions and try again.');
+        } else if (err.name === 'NotReadableError') {
+          setError('Could not access media devices. Please ensure no other application is using your camera/microphone, refresh the page, and try again.');
+          cleanup();
         } else {
           setError('Could not access media devices. Please check your hardware and browser settings.');
         }
@@ -213,6 +244,9 @@ export function useWebRTC(userId: number) {
       setError('Failed to create room');
     }
   };
+
+  const connectionRetries = useRef(0);
+  const maxRetries = 3;
 
   useEffect(() => {
     if (!socket) {
