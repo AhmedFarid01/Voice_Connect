@@ -23,6 +23,10 @@ export function useWebRTC(userId: number) {
       return null;
     }
 
+    if (peerConnection.current) {
+      peerConnection.current.close();
+    }
+
     const pc = new RTCPeerConnection(configuration);
     peerConnection.current = pc;
 
@@ -47,6 +51,10 @@ export function useWebRTC(userId: number) {
           candidate: event.candidate
         });
       }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE Connection State:', pc.iceConnectionState);
     };
 
     return pc;
@@ -136,18 +144,23 @@ export function useWebRTC(userId: number) {
     });
 
     socket.on('call:answer', async ({ from, answer }) => {
-      if (peerConnection.current) {
-        await peerConnection.current.setRemoteDescription(
-          new RTCSessionDescription(answer)
-        );
+      if (peerConnection.current && peerConnection.current.signalingState === 'have-local-offer') {
+        try {
+          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+        } catch (err) {
+          console.error('Error setting remote description:', err);
+          endCall();
+        }
       }
     });
 
     socket.on('call:ice-candidate', async ({ from, candidate }) => {
-      if (peerConnection.current) {
-        await peerConnection.current.addIceCandidate(
-          new RTCIceCandidate(candidate)
-        );
+      if (peerConnection.current && peerConnection.current.remoteDescription) {
+        try {
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+          console.error('Error adding ICE candidate:', err);
+        }
       }
     });
 
@@ -160,6 +173,7 @@ export function useWebRTC(userId: number) {
       socket.off('call:answer');
       socket.off('call:ice-candidate');
       socket.off('call:end');
+      endCall();
     };
   }, [socket]);
 
