@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Phone, UserPlus, LogOut, Search } from "lucide-react";
+import { Dialpad } from "@/components/dialpad";
 import type { User, Call, Contact } from "@db/schema";
 
 export default function HomePage() {
@@ -77,8 +78,17 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
+            <CardHeader>
+              <CardTitle>Dialpad</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Dialpad onCall={(number) => handleCallUser(parseInt(number))} />
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Contacts</CardTitle>
               <div className="flex gap-2">
@@ -151,8 +161,7 @@ export default function HomePage() {
               )}
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="md:col-span-3">
             <CardHeader>
               <CardTitle>Call History</CardTitle>
             </CardHeader>
