@@ -32,7 +32,7 @@ export const calls = pgTable("calls", {
   id: serial("id").primaryKey(),
   callerId: integer("caller_id").references(() => users.id).notNull(),
   receiverId: integer("receiver_id").references(() => users.id).notNull(),
-  roomId: integer("room_id").references(() => rooms.id),
+  roomId: integer("room_id").references(() => rooms.id), // Made optional for direct calls
   status: text("status").notNull(),
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time"),

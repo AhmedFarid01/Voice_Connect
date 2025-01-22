@@ -112,29 +112,47 @@ export function setupSocket(server: HTTPServer) {
     });
 
     // Call Events
-    socket.on("call:start", async ({ roomId }) => {
-      const [call] = await db.insert(calls).values({
-        callerId: userId,
-        receiverId: userId, // For group calls, caller and receiver are same
-        roomId,
-        status: "active",
-        startTime: new Date()
-      }).returning();
+    socket.on("call:start", async ({ receiverId }) => {
+      try {
+        const [call] = await db.insert(calls).values({
+          callerId: userId,
+          receiverId,
+          status: "active",
+          startTime: new Date()
+        }).returning();
 
-      io.to(`room:${roomId}`).emit("call:started", { callId: call.id });
+        const toSocket = connectedUsers.get(receiverId);
+        if (toSocket) {
+          io.to(toSocket).emit("call:incoming", { callId: call.id, from: userId });
+        }
+      } catch (error) {
+        console.error("Error starting call:", error);
+        socket.emit("call:error", { message: "Failed to start call" });
+      }
     });
 
-    socket.on("call:end", async ({ callId, roomId }) => {
-      await db
-        .update(calls)
-        .set({
-          status: "completed",
-          endTime: new Date()
-        })
-        .where(eq(calls.id, callId));
+    socket.on("call:end", async ({ callId }) => {
+      try {
+        const [call] = await db
+          .update(calls)
+          .set({
+            status: "completed",
+            endTime: new Date()
+          })
+          .where(eq(calls.id, callId))
+          .returning();
 
-      if (roomId) {
-        io.to(`room:${roomId}`).emit("call:ended", { from: userId });
+        if (call.roomId) {
+          io.to(`room:${call.roomId}`).emit("call:ended", { callId });
+        } else {
+          const toSocket = connectedUsers.get(call.receiverId);
+          if (toSocket) {
+            io.to(toSocket).emit("call:ended", { callId });
+          }
+        }
+      } catch (error) {
+        console.error("Error ending call:", error);
+        socket.emit("call:error", { message: "Failed to end call" });
       }
     });
   });
