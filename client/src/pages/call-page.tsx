@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { GroupCallGrid } from "@/components/group-call-grid";
+import { IncomingCallDialog } from "@/components/incoming-call-dialog";
 import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Loader2, RefreshCcw, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -23,10 +24,13 @@ export default function CallPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [hasInitiatedCall, setHasInitiatedCall] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<{ callId: number; from: number; username: string } | null>(null);
 
   const {
     startCall,
     endCall,
+    acceptCall,
+    rejectCall,
     isCallActive,
     localStream,
     remoteStreams,
@@ -47,11 +51,37 @@ export default function CallPage() {
   }, [id, socket, isCallActive, startCall, hasInitiatedCall]);
 
   useEffect(() => {
+    // Listen for incoming calls
+    if (!socket) return;
+
+    socket.on('call:incoming', ({ callId, from, username }) => {
+      console.log('Incoming call from:', username);
+      setIncomingCall({ callId, from, username });
+    });
+
+    return () => {
+      socket.off('call:incoming');
+    };
+  }, [socket]);
+
+  useEffect(() => {
     initiateCall();
     return () => {
       endCall();
     };
   }, [initiateCall, endCall]);
+
+  const handleAcceptCall = () => {
+    if (!incomingCall) return;
+    acceptCall(incomingCall.callId, incomingCall.from);
+    setIncomingCall(null);
+  };
+
+  const handleRejectCall = () => {
+    if (!incomingCall) return;
+    rejectCall(incomingCall.callId);
+    setIncomingCall(null);
+  };
 
   const handleRetry = () => {
     setHasInitiatedCall(false);
@@ -176,68 +206,77 @@ export default function CallPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto">
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle className="flex justify-between items-center">
-              <span>
-                {isCallActive ? "Active Call" : "Connecting..."}
-              </span>
-              {isAudioOnly && (
-                <Alert>
-                  <AlertDescription>
-                    Running in audio-only mode
-                  </AlertDescription>
-                </Alert>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <GroupCallGrid
-              localStream={localStream}
-              remoteStreams={remoteStreams}
-              isLocalAudioEnabled={!isMuted}
-              isLocalVideoEnabled={isVideoEnabled}
-            />
-          </CardContent>
-          <CardFooter className="flex justify-center gap-4">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={toggleMute}
-              className={isMuted ? "bg-destructive" : ""}
-            >
-              {isMuted ? (
-                <MicOff className="h-4 w-4" />
-              ) : (
-                <Mic className="h-4 w-4" />
-              )}
-            </Button>
-            {!isAudioOnly && (
+    <>
+      <IncomingCallDialog
+        isOpen={!!incomingCall}
+        callerName={incomingCall?.username || "Someone"}
+        onAccept={handleAcceptCall}
+        onReject={handleRejectCall}
+      />
+
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-7xl mx-auto">
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle className="flex justify-between items-center">
+                <span>
+                  {isCallActive ? "Active Call" : "Connecting..."}
+                </span>
+                {isAudioOnly && (
+                  <Alert>
+                    <AlertDescription>
+                      Running in audio-only mode
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <GroupCallGrid
+                localStream={localStream}
+                remoteStreams={remoteStreams}
+                isLocalAudioEnabled={!isMuted}
+                isLocalVideoEnabled={isVideoEnabled}
+              />
+            </CardContent>
+            <CardFooter className="flex justify-center gap-4">
               <Button
                 variant="outline"
                 size="icon"
-                onClick={toggleVideo}
-                className={!isVideoEnabled ? "bg-destructive" : ""}
+                onClick={toggleMute}
+                className={isMuted ? "bg-destructive" : ""}
               >
-                {isVideoEnabled ? (
-                  <Video className="h-4 w-4" />
+                {isMuted ? (
+                  <MicOff className="h-4 w-4" />
                 ) : (
-                  <VideoOff className="h-4 w-4" />
+                  <Mic className="h-4 w-4" />
                 )}
               </Button>
-            )}
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={handleEndCall}
-            >
-              <PhoneOff className="h-4 w-4" />
-            </Button>
-          </CardFooter>
-        </Card>
+              {!isAudioOnly && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={toggleVideo}
+                  className={!isVideoEnabled ? "bg-destructive" : ""}
+                >
+                  {isVideoEnabled ? (
+                    <Video className="h-4 w-4" />
+                  ) : (
+                    <VideoOff className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={handleEndCall}
+              >
+                <PhoneOff className="h-4 w-4" />
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

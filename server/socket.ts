@@ -1,7 +1,7 @@
 import { Server as HTTPServer } from "http";
 import { Server } from "socket.io";
 import { db } from "@db";
-import { users, calls, rooms, roomParticipants } from "@db/schema";
+import { users, calls } from "@db/schema";
 import { eq } from "drizzle-orm";
 
 export function setupSocket(server: HTTPServer) {
@@ -13,7 +13,6 @@ export function setupSocket(server: HTTPServer) {
   });
 
   const connectedUsers = new Map<number, string>();
-  const userRooms = new Map<number, number>();
 
   io.on("connection", (socket) => {
     let userId: number;
@@ -30,22 +29,108 @@ export function setupSocket(server: HTTPServer) {
       io.emit("userStatus", { userId: id, status: "online" });
     });
 
+    socket.on("call:start", async ({ receiverId }) => {
+      try {
+        if (!userId) {
+          socket.emit("call:error", { message: "User not registered" });
+          return;
+        }
+
+        // Get caller's username
+        const [caller] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+
+        if (!caller) {
+          socket.emit("call:error", { message: "Caller not found" });
+          return;
+        }
+
+        const [call] = await db
+          .insert(calls)
+          .values({
+            callerId: userId,
+            receiverId,
+            status: "pending",
+            startTime: new Date()
+          })
+          .returning();
+
+        const receiverSocket = connectedUsers.get(receiverId);
+        if (receiverSocket) {
+          // Send incoming call notification with caller's username
+          io.to(receiverSocket).emit("call:incoming", {
+            callId: call.id,
+            from: userId,
+            username: caller.username
+          });
+        }
+
+        socket.emit("call:started", { callId: call.id });
+      } catch (error) {
+        console.error("Error starting call:", error);
+        socket.emit("call:error", { message: "Failed to start call" });
+      }
+    });
+
+    socket.on("call:accept", async ({ callId }) => {
+      try {
+        await db
+          .update(calls)
+          .set({ status: "active" })
+          .where(eq(calls.id, callId));
+
+        const [call] = await db
+          .select()
+          .from(calls)
+          .where(eq(calls.id, callId))
+          .limit(1);
+
+        if (call) {
+          const callerSocket = connectedUsers.get(call.callerId);
+          if (callerSocket) {
+            io.to(callerSocket).emit("call:accepted", { callId });
+          }
+        }
+      } catch (error) {
+        console.error("Error accepting call:", error);
+        socket.emit("call:error", { message: "Failed to accept call" });
+      }
+    });
+
+    socket.on("call:reject", async ({ callId }) => {
+      try {
+        await db
+          .update(calls)
+          .set({
+            status: "rejected",
+            endTime: new Date()
+          })
+          .where(eq(calls.id, callId));
+
+        const [call] = await db
+          .select()
+          .from(calls)
+          .where(eq(calls.id, callId))
+          .limit(1);
+
+        if (call) {
+          const callerSocket = connectedUsers.get(call.callerId);
+          if (callerSocket) {
+            io.to(callerSocket).emit("call:rejected", { callId });
+          }
+        }
+      } catch (error) {
+        console.error("Error rejecting call:", error);
+        socket.emit("call:error", { message: "Failed to reject call" });
+      }
+    });
+
     socket.on("disconnect", async () => {
       if (userId) {
         connectedUsers.delete(userId);
-
-        // If user was in a room, mark them as left
-        const roomId = userRooms.get(userId);
-        if (roomId) {
-          await db
-            .update(roomParticipants)
-            .set({ leftAt: new Date() })
-            .where(eq(roomParticipants.userId, userId));
-
-          userRooms.delete(userId);
-          socket.leave(`room:${roomId}`);
-          io.to(`room:${roomId}`).emit("user:left", { userId });
-        }
 
         await db
           .update(users)
@@ -63,7 +148,6 @@ export function setupSocket(server: HTTPServer) {
           return;
         }
 
-        // First find the call to ensure it exists and get its data
         const [existingCall] = await db
           .select()
           .from(calls)
@@ -75,7 +159,6 @@ export function setupSocket(server: HTTPServer) {
           return;
         }
 
-        // Update the call status
         const [updatedCall] = await db
           .update(calls)
           .set({
@@ -85,25 +168,22 @@ export function setupSocket(server: HTTPServer) {
           .where(eq(calls.id, callId))
           .returning();
 
-        // Handle room-based calls
         if (updatedCall.roomId) {
           io.to(`room:${updatedCall.roomId}`).emit("call:ended", { callId });
         } else {
-          // Handle direct calls
           const receiverSocket = connectedUsers.get(updatedCall.receiverId);
           if (receiverSocket) {
             io.to(receiverSocket).emit("call:ended", { callId });
           }
         }
 
-        socket.emit("call:ended", { callId }); // Notify the caller
+        socket.emit("call:ended", { callId });
       } catch (error) {
         console.error("Error ending call:", error);
         socket.emit("call:error", { message: "Failed to end call" });
       }
     });
 
-    // Room Management
     socket.on("room:create", async ({ name }) => {
       try {
         const [room] = await db
@@ -141,7 +221,6 @@ export function setupSocket(server: HTTPServer) {
           return;
         }
 
-        // Check if room exists
         const [room] = await db
           .select()
           .from(rooms)
@@ -189,7 +268,6 @@ export function setupSocket(server: HTTPServer) {
       }
     });
 
-    // WebRTC Signaling
     socket.on("signal", ({ to, signal, roomId }) => {
       const toSocket = connectedUsers.get(to);
       if (toSocket) {
@@ -198,50 +276,6 @@ export function setupSocket(server: HTTPServer) {
           signal,
           roomId
         });
-      }
-    });
-
-    // Call Events
-    socket.on("call:start", async ({ receiverId }) => {
-      try {
-        if (!userId) {
-          socket.emit("call:error", { message: "User not registered" });
-          return;
-        }
-
-        if (!receiverId || typeof receiverId !== 'number') {
-          socket.emit("call:error", { message: "Invalid receiver ID" });
-          return;
-        }
-
-        // Check if receiver exists
-        const [receiver] = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, receiverId))
-          .limit(1);
-
-        if (!receiver) {
-          socket.emit("call:error", { message: "Receiver not found" });
-          return;
-        }
-
-        const [call] = await db.insert(calls).values({
-          callerId: userId,
-          receiverId,
-          status: "active",
-          startTime: new Date()
-        }).returning();
-
-        const toSocket = connectedUsers.get(receiverId);
-        if (toSocket) {
-          io.to(toSocket).emit("call:incoming", { callId: call.id, from: userId });
-        }
-
-        socket.emit("call:started", { callId: call.id });
-      } catch (error) {
-        console.error("Error starting call:", error);
-        socket.emit("call:error", { message: "Failed to start call" });
       }
     });
   });

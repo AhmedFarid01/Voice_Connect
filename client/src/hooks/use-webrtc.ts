@@ -208,6 +208,51 @@ export function useWebRTC(userId: number) {
     }
   }, [socket, localStream, endCall]);
 
+  const acceptCall = useCallback(async (callId: number, peerId: number) => {
+    if (!socket) {
+      setError('Socket connection not available');
+      return;
+    }
+
+    try {
+      currentCallId.current = callId;
+      const stream = await setupLocalStream(false);
+      if (!stream) {
+        socket.emit('call:reject', { callId });
+        return;
+      }
+
+      const pc = await createPeerConnection(peerId);
+      if (!pc) return;
+
+      try {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit('signal', {
+          to: peerId,
+          signal: { type: 'answer', sdp: answer }
+        });
+
+        socket.emit('call:accept', { callId });
+        setIsCallActive(true);
+      } catch (err) {
+        console.error('Error accepting call:', err);
+        setError('Failed to accept call');
+        cleanup();
+      }
+    } catch (err) {
+      console.error('Error in accept call:', err);
+      setError('Failed to setup call');
+      cleanup();
+    }
+  }, [socket, cleanup, setupLocalStream, createPeerConnection]);
+
+  const rejectCall = useCallback((callId: number) => {
+    if (!socket) return;
+    socket.emit('call:reject', { callId });
+  }, [socket]);
+
   const startCall = useCallback(async (receiverId: number, audioOnly = false) => {
     if (!socket) {
       setError('Socket connection not available');
@@ -238,33 +283,9 @@ export function useWebRTC(userId: number) {
 
     const handleIncomingCall = async ({ callId, from: peerId }: { callId: number, from: number }) => {
       console.log('Incoming call from:', peerId);
-      currentCallId.current = callId;
+      // The incoming call is now handled by a modal that allows the user to accept or reject the call.
+      // This removes the automatic acceptance of incoming calls.
 
-      const stream = await setupLocalStream(false);
-      if (!stream) {
-        socket.emit('call:reject', { callId });
-        return;
-      }
-
-      const pc = await createPeerConnection(peerId);
-      if (!pc) return;
-
-      try {
-        console.log('Creating answer for peer:', peerId);
-        const answer = await pc.createAnswer();
-        console.log('Setting local description');
-        await pc.setLocalDescription(answer);
-
-        console.log('Sending answer to peer');
-        socket.emit('signal', {
-          to: peerId,
-          signal: { type: 'answer', sdp: answer }
-        });
-      } catch (err) {
-        console.error('Error creating answer:', err);
-        setError('Failed to establish connection');
-        cleanup();
-      }
     };
 
     const handleSignal = async ({ from: peerId, signal }: { from: number, signal: any }) => {
@@ -328,6 +349,8 @@ export function useWebRTC(userId: number) {
   return {
     startCall,
     endCall,
+    acceptCall,
+    rejectCall,
     isCallActive,
     localStream,
     remoteStreams,
