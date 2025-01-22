@@ -21,7 +21,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
+// Move validation schemas outside component
 const loginSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -39,6 +41,7 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { login, register: registerUser } = useUser();
   const { toast } = useToast();
 
@@ -61,6 +64,7 @@ export default function AuthPage() {
   });
 
   const onSubmit = async (data: LoginFormData | RegisterFormData) => {
+    setIsSubmitting(true);
     try {
       const result = isLogin
         ? await login(data as LoginFormData)
@@ -85,6 +89,8 @@ export default function AuthPage() {
         title: "Error",
         description: "An unexpected error occurred",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -130,7 +136,10 @@ export default function AuthPage() {
                   )}
                 />
                 <div className="flex flex-col gap-2">
-                  <Button type="submit" className="w-full">
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : null}
                     Login
                   </Button>
                   <Button
@@ -140,6 +149,7 @@ export default function AuthPage() {
                       setIsLogin(false);
                       loginForm.reset();
                     }}
+                    disabled={isSubmitting}
                   >
                     Don't have an account? Register
                   </Button>
@@ -202,7 +212,10 @@ export default function AuthPage() {
                   )}
                 />
                 <div className="flex flex-col gap-2">
-                  <Button type="submit" className="w-full">
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : null}
                     Register
                   </Button>
                   <Button
@@ -212,6 +225,7 @@ export default function AuthPage() {
                       setIsLogin(true);
                       registerForm.reset();
                     }}
+                    disabled={isSubmitting}
                   >
                     Already have an account? Login
                   </Button>
