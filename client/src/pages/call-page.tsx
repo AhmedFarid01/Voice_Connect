@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useUser } from "@/hooks/use-user";
@@ -10,42 +10,52 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff } from "lucide-react";
-import { useState } from "react";
+import { GroupCallGrid } from "@/components/group-call-grid";
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { useState as useDialogState } from "react";
 
 export default function CallPage() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { user } = useUser();
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isCreateRoomOpen, setIsCreateRoomOpen] = useDialogState(false);
+  const [roomName, setRoomName] = useState("");
 
-  const { makeCall, endCall, isCallActive, localStream, remoteStream } = useWebRTC(
-    user?.id || 0
-  );
-
-  useEffect(() => {
-    if (localStream && localVideoRef.current) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
-
-  useEffect(() => {
-    if (remoteStream && remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [remoteStream]);
+  const {
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    isCallActive,
+    localStream,
+    remoteStreams,
+    error,
+    activeRoomId
+  } = useWebRTC(user?.id || 0);
 
   useEffect(() => {
-    if (id && !isCallActive) {
-      makeCall(parseInt(id));
+    if (id && !isCallActive && !activeRoomId) {
+      // If ID is numeric, it's a room ID
+      const roomId = parseInt(id);
+      if (!isNaN(roomId)) {
+        joinRoom(roomId);
+      }
     }
-  }, [id, isCallActive, makeCall]);
+  }, [id, isCallActive, activeRoomId, joinRoom]);
+
+  const handleCreateRoom = () => {
+    if (roomName) {
+      createRoom(roomName);
+      setIsCreateRoomOpen(false);
+      setRoomName("");
+    }
+  };
 
   const handleEndCall = () => {
-    endCall();
+    leaveRoom();
     setLocation("/");
   };
 
@@ -67,39 +77,67 @@ export default function CallPage() {
     }
   };
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="w-[400px]">
+          <CardHeader>
+            <CardTitle className="text-destructive">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>{error}</p>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={() => setLocation("/")} className="w-full">
+              Return Home
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <Card className="w-full">
           <CardHeader>
-            <CardTitle>
-              {isCallActive ? "Active Call" : "Connecting..."}
+            <CardTitle className="flex justify-between items-center">
+              <span>
+                {isCallActive ? `Active Call - Room ${activeRoomId}` : "Connecting..."}
+              </span>
+              <Dialog open={isCreateRoomOpen} onOpenChange={setIsCreateRoomOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="ml-4">
+                    <Users className="h-4 w-4 mr-2" />
+                    New Room
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Room</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <Input
+                      placeholder="Room Name"
+                      value={roomName}
+                      onChange={(e) => setRoomName(e.target.value)}
+                    />
+                    <Button onClick={handleCreateRoom} className="w-full">
+                      Create Room
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
-            <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-2 left-2 text-white text-sm">
-                You
-              </div>
-            </div>
-            <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-2 left-2 text-white text-sm">
-                Remote User
-              </div>
-            </div>
+          <CardContent>
+            <GroupCallGrid
+              localStream={localStream}
+              remoteStreams={remoteStreams}
+              isLocalAudioEnabled={!isMuted}
+              isLocalVideoEnabled={isVideoEnabled}
+            />
           </CardContent>
           <CardFooter className="flex justify-center gap-4">
             <Button

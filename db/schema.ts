@@ -12,14 +12,31 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+export const rooms = pgTable("rooms", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  isActive: boolean("is_active").default(true),
+});
+
+export const roomParticipants = pgTable("room_participants", {
+  id: serial("id").primaryKey(),
+  roomId: integer("room_id").references(() => rooms.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  joinedAt: timestamp("joined_at").defaultNow(),
+  leftAt: timestamp("left_at"),
+});
+
 export const calls = pgTable("calls", {
   id: serial("id").primaryKey(),
   callerId: integer("caller_id").references(() => users.id).notNull(),
   receiverId: integer("receiver_id").references(() => users.id).notNull(),
-  status: text("status").notNull(), // "missed", "completed", "rejected"
+  roomId: integer("room_id").references(() => rooms.id),
+  status: text("status").notNull(),
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time"),
-  duration: integer("duration"), // in seconds
+  duration: integer("duration"),
 });
 
 export const contacts = pgTable("contacts", {
@@ -39,6 +56,29 @@ export const callsRelations = relations(calls, ({ one }) => ({
     fields: [calls.receiverId],
     references: [users.id],
   }),
+  room: one(rooms, {
+    fields: [calls.roomId],
+    references: [rooms.id],
+  }),
+}));
+
+export const roomsRelations = relations(rooms, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [rooms.createdBy],
+    references: [users.id],
+  }),
+  participants: many(roomParticipants),
+}));
+
+export const roomParticipantsRelations = relations(roomParticipants, ({ one }) => ({
+  room: one(rooms, {
+    fields: [roomParticipants.roomId],
+    references: [rooms.id],
+  }),
+  user: one(users, {
+    fields: [roomParticipants.userId],
+    references: [users.id],
+  }),
 }));
 
 export const contactsRelations = relations(contacts, ({ one }) => ({
@@ -54,7 +94,13 @@ export const contactsRelations = relations(contacts, ({ one }) => ({
 
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
+export const insertRoomSchema = createInsertSchema(rooms);
+export const selectRoomSchema = createSelectSchema(rooms);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type Room = typeof rooms.$inferSelect;
+export type NewRoom = typeof rooms.$inferInsert;
 export type Call = typeof calls.$inferSelect;
 export type Contact = typeof contacts.$inferSelect;
+export type RoomParticipant = typeof roomParticipants.$inferSelect;

@@ -7,182 +7,212 @@ const configuration = {
   ]
 };
 
+interface PeerConnection {
+  connection: RTCPeerConnection;
+  stream: MediaStream | null;
+}
+
 export function useWebRTC(userId: number) {
   const socket = useSocket();
   const [isCallActive, setIsCallActive] = useState(false);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<Map<number, MediaStream>>(new Map());
   const [error, setError] = useState<string | null>(null);
+  const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
 
-  const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const peerConnections = useRef<Map<number, PeerConnection>>(new Map());
   const currentCallId = useRef<number | null>(null);
 
-  const setupPeerConnection = useCallback(async () => {
+  const createPeerConnection = useCallback(async (peerId: number) => {
     if (!socket) {
       setError('Socket connection not available');
       return null;
     }
 
-    if (peerConnection.current) {
-      peerConnection.current.close();
-    }
-
     const pc = new RTCPeerConnection(configuration);
-    peerConnection.current = pc;
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      setLocalStream(stream);
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
-    } catch (err) {
-      console.error('Error accessing media devices:', err);
-      setError('Could not access media devices');
-      return null;
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
 
     pc.ontrack = (event) => {
-      setRemoteStream(new MediaStream([event.track]));
+      const stream = event.streams[0];
+      setRemoteStreams(prev => new Map(prev).set(peerId, stream));
     };
 
     pc.onicecandidate = (event) => {
-      if (event.candidate && socket && currentCallId.current) {
-        socket.emit('call:ice-candidate', {
-          to: currentCallId.current,
-          candidate: event.candidate
+      if (event.candidate && socket && activeRoomId) {
+        socket.emit('signal', {
+          to: peerId,
+          signal: { type: 'candidate', candidate: event.candidate },
+          roomId: activeRoomId
         });
       }
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE Connection State:', pc.iceConnectionState);
+      console.log(`ICE Connection State with peer ${peerId}:`, pc.iceConnectionState);
     };
 
+    peerConnections.current.set(peerId, { connection: pc, stream: null });
     return pc;
-  }, [socket]);
+  }, [socket, localStream, activeRoomId]);
 
-  const makeCall = async (to: number) => {
+  const setupLocalStream = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: true, 
+        video: true 
+      });
+      setLocalStream(stream);
+      return stream;
+    } catch (err) {
+      console.error('Error accessing media devices:', err);
+      setError('Could not access media devices');
+      return null;
+    }
+  };
+
+  const createRoom = async (name: string) => {
     if (!socket) {
       setError('Socket connection not available');
       return;
     }
 
-    const pc = await setupPeerConnection();
-    if (!pc) return;
-
-    currentCallId.current = to;
-    setIsCallActive(true);
-
-    try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      socket.emit('call:offer', {
-        to,
-        offer
-      });
-    } catch (err) {
-      console.error('Error creating offer:', err);
-      setError('Failed to create call offer');
-      endCall();
-    }
+    socket.emit('room:create', { name });
   };
 
-  const answerCall = async (from: number, offer: RTCSessionDescriptionInit) => {
+  const joinRoom = async (roomId: number) => {
     if (!socket) {
       setError('Socket connection not available');
       return;
     }
 
-    const pc = await setupPeerConnection();
-    if (!pc) return;
+    const stream = await setupLocalStream();
+    if (!stream) return;
 
-    currentCallId.current = from;
+    setActiveRoomId(roomId);
     setIsCallActive(true);
-
-    try {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      socket.emit('call:answer', {
-        to: from,
-        answer
-      });
-    } catch (err) {
-      console.error('Error answering call:', err);
-      setError('Failed to answer call');
-      endCall();
-    }
+    socket.emit('room:join', { roomId });
+    socket.emit('call:start', { roomId });
   };
 
-  const endCall = () => {
-    if (socket && currentCallId.current) {
-      socket.emit('call:end', {
-        to: currentCallId.current,
-        callId: currentCallId.current
-      });
-    }
+  const leaveRoom = () => {
+    if (!socket || !activeRoomId) return;
 
-    if (peerConnection.current) {
-      peerConnection.current.close();
-      peerConnection.current = null;
-    }
+    socket.emit('room:leave', { roomId: activeRoomId });
+    socket.emit('call:end', { 
+      callId: currentCallId.current,
+      roomId: activeRoomId 
+    });
 
+    // Cleanup
+    peerConnections.current.forEach(({ connection }) => connection.close());
+    peerConnections.current.clear();
     localStream?.getTracks().forEach(track => track.stop());
     setLocalStream(null);
-    setRemoteStream(null);
+    setRemoteStreams(new Map());
     setIsCallActive(false);
-    setError(null);
+    setActiveRoomId(null);
     currentCallId.current = null;
   };
 
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('call:offer', async ({ from, offer }) => {
-      await answerCall(from, offer);
+    socket.on('room:created', (room) => {
+      setActiveRoomId(room.id);
+      joinRoom(room.id);
     });
 
-    socket.on('call:answer', async ({ from, answer }) => {
-      if (peerConnection.current && peerConnection.current.signalingState === 'have-local-offer') {
-        try {
-          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
-        } catch (err) {
-          console.error('Error setting remote description:', err);
-          endCall();
-        }
+    socket.on('user:joined', async ({ userId: peerId }) => {
+      const pc = await createPeerConnection(peerId);
+      if (!pc) return;
+
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        socket.emit('signal', {
+          to: peerId,
+          signal: { type: 'offer', sdp: offer },
+          roomId: activeRoomId
+        });
+      } catch (err) {
+        console.error('Error creating offer:', err);
+        setError('Failed to create call offer');
       }
     });
 
-    socket.on('call:ice-candidate', async ({ from, candidate }) => {
-      if (peerConnection.current && peerConnection.current.remoteDescription) {
-        try {
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (err) {
-          console.error('Error adding ICE candidate:', err);
-        }
+    socket.on('user:left', ({ userId: peerId }) => {
+      const peer = peerConnections.current.get(peerId);
+      if (peer) {
+        peer.connection.close();
+        peerConnections.current.delete(peerId);
+        setRemoteStreams(prev => {
+          const next = new Map(prev);
+          next.delete(peerId);
+          return next;
+        });
       }
     });
 
-    socket.on('call:end', () => {
-      endCall();
+    socket.on('signal', async ({ from: peerId, signal }) => {
+      let pc = peerConnections.current.get(peerId)?.connection;
+
+      if (!pc) {
+        pc = await createPeerConnection(peerId);
+        if (!pc) return;
+      }
+
+      try {
+        if (signal.type === 'offer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          socket.emit('signal', {
+            to: peerId,
+            signal: { type: 'answer', sdp: answer },
+            roomId: activeRoomId
+          });
+        } else if (signal.type === 'answer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        } else if (signal.type === 'candidate') {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+      } catch (err) {
+        console.error('Error handling signal:', err);
+      }
+    });
+
+    socket.on('call:started', ({ callId }) => {
+      currentCallId.current = callId;
+    });
+
+    socket.on('call:ended', () => {
+      leaveRoom();
     });
 
     return () => {
-      socket.off('call:offer');
-      socket.off('call:answer');
-      socket.off('call:ice-candidate');
-      socket.off('call:end');
-      endCall();
+      socket.off('room:created');
+      socket.off('user:joined');
+      socket.off('user:left');
+      socket.off('signal');
+      socket.off('call:started');
+      socket.off('call:ended');
+      leaveRoom();
     };
-  }, [socket]);
+  }, [socket, createPeerConnection]);
 
   return {
-    makeCall,
-    endCall,
+    createRoom,
+    joinRoom,
+    leaveRoom,
     isCallActive,
     localStream,
-    remoteStream,
-    error
+    remoteStreams,
+    error,
+    activeRoomId
   };
 }
