@@ -9,24 +9,30 @@ export function useSocket() {
   const socket = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 3;
+  const maxReconnectAttempts = 5;
 
   useEffect(() => {
-    if (user && !socket.current) {
-      // Initialize socket with the same origin
+    if (!socket.current && user) {
+      console.log('Initializing socket connection...');
       socket.current = io(window.location.origin, {
         transports: ['websocket'],
         autoConnect: true,
         reconnection: true,
         reconnectionAttempts: maxReconnectAttempts,
         reconnectionDelay: 1000,
+        timeout: 10000,
       });
 
       socket.current.on('connect', () => {
         console.log('Socket connected');
         setIsConnected(true);
         reconnectAttempts.current = 0;
-        socket.current?.emit('register', user.id);
+
+        // Register user after successful connection
+        if (user) {
+          console.log('Registering user with socket:', user.id);
+          socket.current?.emit('register', user.id);
+        }
       });
 
       socket.current.on('disconnect', () => {
@@ -47,10 +53,21 @@ export function useSocket() {
           socket.current?.disconnect();
         }
       });
+
+      // Add error event handler
+      socket.current.on('error', (error: any) => {
+        console.error('Socket error:', error);
+        toast({
+          variant: "destructive",
+          title: "Connection Error",
+          description: error.message || "An error occurred with the connection",
+        });
+      });
     }
 
     return () => {
       if (socket.current) {
+        console.log('Cleaning up socket connection');
         socket.current.disconnect();
         socket.current = null;
         setIsConnected(false);
@@ -58,6 +75,11 @@ export function useSocket() {
     };
   }, [user, toast]);
 
-  // Only return the socket if it's connected
-  return isConnected ? socket.current : null;
+  // For debugging
+  useEffect(() => {
+    console.log('Socket connection state:', isConnected);
+    console.log('User state:', user);
+  }, [isConnected, user]);
+
+  return isConnected && socket.current ? socket.current : null;
 }

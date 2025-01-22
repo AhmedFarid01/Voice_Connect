@@ -26,6 +26,7 @@ export default function CallPage() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isCreateRoomOpen, setIsCreateRoomOpen] = useDialogState(false);
   const [roomName, setRoomName] = useState("");
+  const [isConnecting, setIsConnecting] = useState(true);
 
   const {
     createRoom,
@@ -39,15 +40,31 @@ export default function CallPage() {
   } = useWebRTC(user?.id || 0);
 
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
     if (!socket) {
-      // Don't try to join if socket isn't connected
-      return;
+      // Set a timeout to show connecting state
+      timeoutId = setTimeout(() => {
+        setIsConnecting(false);
+      }, 5000);
+    } else {
+      setIsConnecting(false);
     }
 
-    if (id && !isCallActive && !activeRoomId) {
-      // If ID is numeric, it's a room ID
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [socket]);
+
+  useEffect(() => {
+    if (!socket || !id) return;
+
+    if (!isCallActive && !activeRoomId) {
       const roomId = parseInt(id);
       if (!isNaN(roomId)) {
+        console.log('Attempting to join room:', roomId);
         joinRoom(roomId);
       }
     }
@@ -88,27 +105,57 @@ export default function CallPage() {
     }
   };
 
-  // Handle both WebRTC errors and socket connection issues
-  const error = webRTCError || (!socket ? "Connecting to server..." : null);
 
-  if (error) {
+  // Handle connection states
+  if (isConnecting) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-[400px]">
           <CardHeader>
-            <CardTitle className="text-destructive">
-              {error === "Connecting to server..." ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  {error}
-                </div>
-              ) : (
-                "Error"
-              )}
+            <CardTitle>
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Connecting to server...
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p>{error}</p>
+            <p>Please wait while we establish a connection...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!socket) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="w-[400px]">
+          <CardHeader>
+            <CardTitle className="text-destructive">Connection Failed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>Unable to connect to the server. Please try again later.</p>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={() => setLocation("/")} className="w-full">
+              Return Home
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
+  if (webRTCError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="w-[400px]">
+          <CardHeader>
+            <CardTitle className="text-destructive">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>{webRTCError}</p>
           </CardContent>
           <CardFooter>
             <Button onClick={() => setLocation("/")} className="w-full">
