@@ -56,6 +56,53 @@ export function setupSocket(server: HTTPServer) {
       }
     });
 
+    socket.on("call:end", async ({ callId }) => {
+      try {
+        if (!callId) {
+          socket.emit("call:error", { message: "Invalid call ID" });
+          return;
+        }
+
+        // First find the call to ensure it exists and get its data
+        const [existingCall] = await db
+          .select()
+          .from(calls)
+          .where(eq(calls.id, callId))
+          .limit(1);
+
+        if (!existingCall) {
+          socket.emit("call:error", { message: "Call not found" });
+          return;
+        }
+
+        // Update the call status
+        const [updatedCall] = await db
+          .update(calls)
+          .set({
+            status: "completed",
+            endTime: new Date()
+          })
+          .where(eq(calls.id, callId))
+          .returning();
+
+        // Handle room-based calls
+        if (updatedCall.roomId) {
+          io.to(`room:${updatedCall.roomId}`).emit("call:ended", { callId });
+        } else {
+          // Handle direct calls
+          const receiverSocket = connectedUsers.get(updatedCall.receiverId);
+          if (receiverSocket) {
+            io.to(receiverSocket).emit("call:ended", { callId });
+          }
+        }
+
+        socket.emit("call:ended", { callId }); // Notify the caller
+      } catch (error) {
+        console.error("Error ending call:", error);
+        socket.emit("call:error", { message: "Failed to end call" });
+      }
+    });
+
     // Room Management
     socket.on("room:create", async ({ name }) => {
       try {
@@ -195,31 +242,6 @@ export function setupSocket(server: HTTPServer) {
       } catch (error) {
         console.error("Error starting call:", error);
         socket.emit("call:error", { message: "Failed to start call" });
-      }
-    });
-
-    socket.on("call:end", async ({ callId }) => {
-      try {
-        const [call] = await db
-          .update(calls)
-          .set({
-            status: "completed",
-            endTime: new Date()
-          })
-          .where(eq(calls.id, callId))
-          .returning();
-
-        if (call.roomId) {
-          io.to(`room:${call.roomId}`).emit("call:ended", { callId });
-        } else {
-          const toSocket = connectedUsers.get(call.receiverId);
-          if (toSocket) {
-            io.to(toSocket).emit("call:ended", { callId });
-          }
-        }
-      } catch (error) {
-        console.error("Error ending call:", error);
-        socket.emit("call:error", { message: "Failed to end call" });
       }
     });
   });

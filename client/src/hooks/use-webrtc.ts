@@ -143,10 +143,12 @@ export function useWebRTC(userId: number) {
     if (!socket || !activeRoomId) return;
 
     socket.emit('room:leave', { roomId: activeRoomId });
-    socket.emit('call:end', { 
-      callId: currentCallId.current,
-      roomId: activeRoomId 
-    });
+    if (currentCallId.current) {
+      socket.emit('call:end', { 
+        callId: currentCallId.current,
+        roomId: activeRoomId 
+      });
+    }
 
     // Cleanup
     peerConnections.current.forEach(({ connection }) => connection.close());
