@@ -16,6 +16,9 @@ export function GroupCallGrid({
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRefs = useRef<Map<number, HTMLVideoElement>>(new Map());
 
+  // Check if local stream has video tracks
+  const hasVideoTrack = localStream?.getVideoTracks().length > 0;
+
   useEffect(() => {
     if (localStream && localVideoRef.current) {
       localVideoRef.current.srcObject = localStream;
@@ -41,41 +44,48 @@ export function GroupCallGrid({
       }}
     >
       <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-        <video
-          ref={localVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className={`w-full h-full object-cover ${!isLocalVideoEnabled ? 'hidden' : ''}`}
-        />
-        {!isLocalVideoEnabled && (
+        {hasVideoTrack ? (
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover ${!isLocalVideoEnabled ? 'hidden' : ''}`}
+          />
+        ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-muted">
-            <span className="text-muted-foreground">Camera Off</span>
+            <span className="text-muted-foreground">Video Unavailable</span>
           </div>
         )}
-        <div className="absolute bottom-2 left-2 text-white text-sm">
-          You {!isLocalAudioEnabled && '(Muted)'}
+        <div className="absolute bottom-2 left-2 text-white text-sm bg-black/50 px-2 py-1 rounded">
+          You {!isLocalAudioEnabled ? '(Muted)' : ''}
         </div>
       </div>
 
-      {Array.from(remoteStreams.entries()).map(([peerId]) => (
+      {Array.from(remoteStreams.entries()).map(([peerId, stream]) => (
         <div
           key={peerId}
           className="relative aspect-video bg-muted rounded-lg overflow-hidden"
         >
-          <video
-            ref={(el) => {
-              if (el) {
-                remoteVideoRefs.current.set(peerId, el);
-              } else {
-                remoteVideoRefs.current.delete(peerId);
-              }
-            }}
-            autoPlay
-            playsInline
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute bottom-2 left-2 text-white text-sm">
+          {stream.getVideoTracks().length > 0 ? (
+            <video
+              ref={(el) => {
+                if (el) {
+                  remoteVideoRefs.current.set(peerId, el);
+                } else {
+                  remoteVideoRefs.current.delete(peerId);
+                }
+              }}
+              autoPlay
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-muted">
+              <span className="text-muted-foreground">Participant Video Unavailable</span>
+            </div>
+          )}
+          <div className="absolute bottom-2 left-2 text-white text-sm bg-black/50 px-2 py-1 rounded">
             Participant {peerId}
           </div>
         </div>

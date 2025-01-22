@@ -30,6 +30,44 @@ export function useWebRTC(userId: number) {
   const connectionRetries = useRef(0);
   const maxRetries = 3;
 
+  const setupLocalStream = async () => {
+    try {
+      setIsInitializing(true);
+      console.log('Setting up local stream...');
+
+      // Try video + audio first
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: true, 
+          video: true 
+        });
+        setLocalStream(stream);
+        setIsInitializing(false);
+        return stream;
+      } catch (videoErr) {
+        console.log('Video unavailable, falling back to audio only:', videoErr);
+
+        // Fallback to audio only
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: true, 
+            video: false 
+          });
+          setLocalStream(audioStream);
+          setIsInitializing(false);
+          return audioStream;
+        } catch (audioErr) {
+          throw new Error('Neither audio nor video available');
+        }
+      }
+    } catch (err) {
+      console.error('Error accessing media devices:', err);
+      setError('Could not access camera or microphone. Please ensure they are connected, not in use by another application, and permissions are granted.');
+      setIsInitializing(false);
+      return null;
+    }
+  };
+
   const createPeerConnection = useCallback(async (peerId: number) => {
     if (!socket) {
       setError('Socket connection not available');
@@ -71,7 +109,7 @@ export function useWebRTC(userId: number) {
             connectionRetries.current++;
             pc.restartIce();
           } else {
-            setError('Connection failed after multiple attempts. Please try again.');
+            setError('Connection failed after multiple attempts. Please check your internet connection and try again.');
             leaveRoom();
           }
         } else if (pc.iceConnectionState === 'connected') {
@@ -83,29 +121,10 @@ export function useWebRTC(userId: number) {
       return pc;
     } catch (err) {
       console.error('Error creating peer connection:', err);
-      setError('Failed to create peer connection');
+      setError('Failed to create peer connection. Please check your internet connection.');
       return null;
     }
-  }, [socket, localStream, activeRoomId]);
-
-  const setupLocalStream = async () => {
-    try {
-      setIsInitializing(true);
-      console.log('Setting up local stream...');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true, 
-        video: true 
-      });
-      setLocalStream(stream);
-      setIsInitializing(false);
-      return stream;
-    } catch (err) {
-      console.error('Error accessing media devices:', err);
-      setError('Could not access camera or microphone. Please ensure they are connected and permissions are granted.');
-      setIsInitializing(false);
-      return null;
-    }
-  };
+  }, [socket, localStream, activeRoomId, leaveRoom]);
 
   const createRoom = async (name: string) => {
     if (!socket) {
