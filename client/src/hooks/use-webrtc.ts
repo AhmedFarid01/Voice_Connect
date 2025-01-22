@@ -12,11 +12,17 @@ export function useWebRTC(userId: number) {
   const [isCallActive, setIsCallActive] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  
+  const [error, setError] = useState<string | null>(null);
+
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const currentCallId = useRef<number | null>(null);
 
   const setupPeerConnection = useCallback(async () => {
+    if (!socket) {
+      setError('Socket connection not available');
+      return null;
+    }
+
     const pc = new RTCPeerConnection(configuration);
     peerConnection.current = pc;
 
@@ -26,6 +32,7 @@ export function useWebRTC(userId: number) {
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
     } catch (err) {
       console.error('Error accessing media devices:', err);
+      setError('Could not access media devices');
       return null;
     }
 
@@ -34,7 +41,7 @@ export function useWebRTC(userId: number) {
     };
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
+      if (event.candidate && socket && currentCallId.current) {
         socket.emit('call:ice-candidate', {
           to: currentCallId.current,
           candidate: event.candidate
@@ -46,6 +53,11 @@ export function useWebRTC(userId: number) {
   }, [socket]);
 
   const makeCall = async (to: number) => {
+    if (!socket) {
+      setError('Socket connection not available');
+      return;
+    }
+
     const pc = await setupPeerConnection();
     if (!pc) return;
 
@@ -62,11 +74,17 @@ export function useWebRTC(userId: number) {
       });
     } catch (err) {
       console.error('Error creating offer:', err);
+      setError('Failed to create call offer');
       endCall();
     }
   };
 
   const answerCall = async (from: number, offer: RTCSessionDescriptionInit) => {
+    if (!socket) {
+      setError('Socket connection not available');
+      return;
+    }
+
     const pc = await setupPeerConnection();
     if (!pc) return;
 
@@ -84,12 +102,13 @@ export function useWebRTC(userId: number) {
       });
     } catch (err) {
       console.error('Error answering call:', err);
+      setError('Failed to answer call');
       endCall();
     }
   };
 
   const endCall = () => {
-    if (currentCallId.current) {
+    if (socket && currentCallId.current) {
       socket.emit('call:end', {
         to: currentCallId.current,
         callId: currentCallId.current
@@ -105,6 +124,7 @@ export function useWebRTC(userId: number) {
     setLocalStream(null);
     setRemoteStream(null);
     setIsCallActive(false);
+    setError(null);
     currentCallId.current = null;
   };
 
@@ -117,13 +137,17 @@ export function useWebRTC(userId: number) {
 
     socket.on('call:answer', async ({ from, answer }) => {
       if (peerConnection.current) {
-        await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+        await peerConnection.current.setRemoteDescription(
+          new RTCSessionDescription(answer)
+        );
       }
     });
 
     socket.on('call:ice-candidate', async ({ from, candidate }) => {
       if (peerConnection.current) {
-        await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+        await peerConnection.current.addIceCandidate(
+          new RTCIceCandidate(candidate)
+        );
       }
     });
 
@@ -144,6 +168,7 @@ export function useWebRTC(userId: number) {
     endCall,
     isCallActive,
     localStream,
-    remoteStream
+    remoteStream,
+    error
   };
 }
