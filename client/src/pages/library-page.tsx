@@ -65,9 +65,11 @@ export default function LibraryPage() {
       <NavBar />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
-          <div>
-            <h1 className="text-3xl font-bold">Library</h1>
-            <p className="text-zinc-400 mt-1">Pick up where you left off, or revisit something you saved.</p>
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold">Library</h1>
+            <p className="text-sm sm:text-base text-zinc-400 mt-1">
+              Pick up where you left off, or revisit something you saved.
+            </p>
           </div>
           {tab === "history" && history && history.length > 0 && (
             <AlertDialog>
@@ -213,28 +215,22 @@ function HistoryCard({ video, onRemove }: { video: HistoryRow; onRemove: () => v
       : 0;
   return (
     <div className="relative group/hist">
-      <VideoCard video={video} />
-      {pct > 0 && !video.completed && (
-        <div className="absolute left-0 right-0 top-[calc(56.25%-2px)] sm:top-auto pointer-events-none">
-          <div className="mx-0 h-1 bg-black/40 rounded-b-2xl overflow-hidden -mt-1">
-            <div
-              className="h-full bg-gradient-to-r from-violet-400 to-fuchsia-400"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </div>
-      )}
-      <div className="mt-1 flex items-center justify-between text-xs text-zinc-500">
-        <span className="inline-flex items-center gap-1.5">
+      <VideoCard video={video} progressPct={video.completed ? 0 : pct} />
+      <div className="mt-1 flex items-center justify-between gap-2 text-xs text-zinc-500">
+        <span className="inline-flex items-center gap-1.5 min-w-0 truncate">
           {video.completed ? (
             <>Watched {formatDistanceToNow(new Date(video.lastWatchedAt), { addSuffix: true })}</>
           ) : pct > 0 ? (
             <>
-              <Play className="h-3 w-3 text-violet-300 fill-current" />
-              {pct}% watched · {formatDistanceToNow(new Date(video.lastWatchedAt), { addSuffix: true })}
+              <Play className="h-3 w-3 text-violet-300 fill-current shrink-0" />
+              <span className="truncate">
+                {pct}% watched · {formatDistanceToNow(new Date(video.lastWatchedAt), { addSuffix: true })}
+              </span>
             </>
           ) : (
-            <>{formatDistanceToNow(new Date(video.lastWatchedAt), { addSuffix: true })}</>
+            <span className="truncate">
+              {formatDistanceToNow(new Date(video.lastWatchedAt), { addSuffix: true })}
+            </span>
           )}
         </span>
         <button
@@ -243,7 +239,7 @@ function HistoryCard({ video, onRemove }: { video: HistoryRow; onRemove: () => v
             e.stopPropagation();
             onRemove();
           }}
-          className="opacity-0 group-hover/hist:opacity-100 hover:text-rose-300 transition"
+          className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover/hist:opacity-100 hover:text-rose-300 transition"
           title="Remove from history"
         >
           <Trash2 className="h-3.5 w-3.5" />

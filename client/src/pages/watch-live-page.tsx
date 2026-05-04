@@ -143,12 +143,12 @@ export default function WatchLivePage() {
 
                   <ReactionLayer broadcastId={Number.isFinite(id) ? id : null} />
 
-                  <div className="absolute bottom-4 inset-x-0 flex justify-center gap-3 px-3 flex-wrap">
+                  <div className="absolute bottom-3 sm:bottom-4 inset-x-0 flex justify-center gap-2 sm:gap-3 px-3 flex-wrap">
                     {!isOwnBroadcast && <ReactionToolbar onSend={sendReaction} />}
                     {isOwnBroadcast && (
                       <Button
                         onClick={() => setLocation("/go-live")}
-                        className="rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur"
+                        className="rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur text-xs sm:text-sm h-9 sm:h-10"
                       >
                         <Radio className="h-4 w-4 mr-2" />
                         Open broadcaster view
@@ -189,7 +189,7 @@ export default function WatchLivePage() {
             </div>
           </div>
 
-          <aside className="rounded-2xl glass flex flex-col h-[70vh] lg:h-auto lg:max-h-[80vh]">
+          <aside className="rounded-2xl glass flex flex-col h-[55vh] sm:h-[70vh] lg:h-auto lg:max-h-[80vh]">
             <div className="px-5 py-4 border-b border-white/10">
               <h3 className="font-semibold">Live chat</h3>
             </div>

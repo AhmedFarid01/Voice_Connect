@@ -10,12 +10,12 @@ export function ReactionToolbar({
   onSend: (emoji: string) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 p-1.5 shadow-lg">
+    <div className="inline-flex items-center gap-0.5 sm:gap-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 p-1 sm:p-1.5 shadow-lg max-w-full">
       {REACTIONS.map((e) => (
         <button
           key={e}
           onClick={() => onSend(e)}
-          className="grid place-items-center h-8 w-8 rounded-full hover:bg-white/15 active:scale-90 transition text-base"
+          className="grid place-items-center h-7 w-7 sm:h-8 sm:w-8 rounded-full hover:bg-white/15 active:scale-90 transition text-sm sm:text-base"
           title={`Send ${e}`}
         >
           {e}

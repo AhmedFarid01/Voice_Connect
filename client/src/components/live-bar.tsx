@@ -21,37 +21,40 @@ export function LiveBar() {
   if (location === "/go-live") return null;
 
   return (
-    <div className="fixed bottom-4 inset-x-0 z-50 flex justify-center px-4 pointer-events-none">
-      <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-gradient-to-r from-rose-600/95 via-rose-500/95 to-orange-500/95 backdrop-blur-md border border-white/15 px-4 py-2.5 shadow-2xl shadow-rose-500/40 animate-float-up">
-        <span className="grid place-items-center h-8 w-8 rounded-lg bg-white/20">
+    <div className="fixed bottom-3 sm:bottom-4 inset-x-0 z-50 flex justify-center px-3 pointer-events-none">
+      <div className="pointer-events-auto flex items-center gap-2 sm:gap-3 max-w-full rounded-2xl bg-gradient-to-r from-rose-600/95 via-rose-500/95 to-orange-500/95 backdrop-blur-md border border-white/15 px-3 sm:px-4 py-2 sm:py-2.5 shadow-2xl shadow-rose-500/40 animate-float-up">
+        <span className="grid place-items-center h-8 w-8 rounded-lg bg-white/20 shrink-0">
           <Radio className="h-4 w-4 text-white" />
         </span>
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-widest text-white/80 font-bold leading-none">You're live</p>
-          <p className="text-sm font-semibold text-white truncate max-w-[260px] leading-tight">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] sm:text-xs uppercase tracking-widest text-white/80 font-bold leading-none">
+            You're live
+          </p>
+          <p className="text-xs sm:text-sm font-semibold text-white truncate max-w-[44vw] sm:max-w-[260px] leading-tight">
             {title ?? "Streaming"}
           </p>
         </div>
-        <span className="hidden sm:inline-flex items-center gap-1 text-xs text-white/90 px-2 py-1 rounded-md bg-white/15">
+        <span className="hidden sm:inline-flex items-center gap-1 text-xs text-white/90 px-2 py-1 rounded-md bg-white/15 shrink-0">
           <Users className="h-3 w-3" />
           {viewerCount}
         </span>
         <Link href="/go-live">
           <a
-            className="inline-flex items-center gap-1 text-xs font-semibold rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-white transition"
+            className="inline-flex items-center gap-1 text-xs font-semibold rounded-lg bg-white/15 hover:bg-white/25 px-2 sm:px-3 py-1.5 text-white transition shrink-0"
             title="Go to broadcaster view"
           >
-            Open <ArrowUpRight className="h-3 w-3" />
+            <span className="hidden sm:inline">Open</span>
+            <ArrowUpRight className="h-3.5 w-3.5" />
           </a>
         </Link>
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <button
-              className="inline-flex items-center gap-1 text-xs font-semibold rounded-lg bg-black/40 hover:bg-black/60 px-2.5 py-1.5 text-white transition"
+              className="inline-flex items-center gap-1 text-xs font-semibold rounded-lg bg-black/40 hover:bg-black/60 px-2 sm:px-2.5 py-1.5 text-white transition shrink-0"
               title="End broadcast"
             >
               <X className="h-3.5 w-3.5" />
-              End
+              <span className="hidden sm:inline">End</span>
             </button>
           </AlertDialogTrigger>
           <EndBroadcastDialog onEnd={() => end()} />

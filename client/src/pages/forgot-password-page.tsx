@@ -48,7 +48,7 @@ export default function ForgotPasswordPage() {
           <span className="text-xl font-bold gradient-text">Lumen</span>
         </div>
 
-        <div className="glass gradient-border rounded-3xl p-8">
+        <div className="glass gradient-border rounded-3xl p-6 sm:p-8">
           {sent ? (
             <div className="text-center">
               <div className="mx-auto h-12 w-12 grid place-items-center rounded-2xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 mb-4">

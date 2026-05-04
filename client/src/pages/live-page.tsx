@@ -22,7 +22,7 @@ export default function LivePage() {
               <Sparkles className="h-3 w-3" />
               Live broadcasts
             </p>
-            <h1 className="mt-3 text-3xl sm:text-4xl font-bold">Tune in to creators streaming right now.</h1>
+            <h1 className="mt-3 text-2xl sm:text-4xl font-bold">Tune in to creators streaming right now.</h1>
           </div>
           <Button
             onClick={() => setLocation("/go-live")}

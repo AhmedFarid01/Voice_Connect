@@ -35,7 +35,13 @@ function formatNumber(n?: number | null) {
   return String(n);
 }
 
-export function VideoCard({ video }: { video: VideoCardData }) {
+export function VideoCard({
+  video,
+  progressPct,
+}: {
+  video: VideoCardData;
+  progressPct?: number;
+}) {
   const [, setLocation] = useLocation();
   const author = video.authorDisplayName || video.authorUsername;
   const initials = author.slice(0, 2).toUpperCase();
@@ -83,6 +89,15 @@ export function VideoCard({ video }: { video: VideoCardData }) {
           {video.category && (
             <div className="absolute top-2 left-2 rounded-md bg-black/60 backdrop-blur-sm border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold text-white/90">
               {video.category}
+            </div>
+          )}
+
+          {typeof progressPct === "number" && progressPct > 0 && (
+            <div className="absolute inset-x-0 bottom-0 h-1 bg-black/50">
+              <div
+                className="h-full bg-gradient-to-r from-violet-400 to-fuchsia-400"
+                style={{ width: `${Math.min(100, progressPct)}%` }}
+              />
             </div>
           )}
         </div>

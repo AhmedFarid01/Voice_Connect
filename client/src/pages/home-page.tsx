@@ -79,9 +79,9 @@ export default function HomePage() {
     <div className="min-h-screen">
       <NavBar onSearch={setSearch} searchValue={search} />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-12">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-10 sm:space-y-12">
         {/* Hero */}
-        <section className="relative overflow-hidden rounded-3xl border border-white/10 p-8 sm:p-12">
+        <section className="relative overflow-hidden rounded-3xl border border-white/10 p-6 sm:p-12">
           <div
             className="absolute inset-0 -z-10"
             style={{

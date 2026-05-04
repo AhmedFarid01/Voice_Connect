@@ -45,9 +45,11 @@ export default function DashboardPage() {
       <NavBar />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold">Creator dashboard</h1>
-            <p className="text-zinc-400 mt-1">Your numbers across every video and broadcast.</p>
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold">Creator dashboard</h1>
+            <p className="text-sm sm:text-base text-zinc-400 mt-1">
+              Your numbers across every video and broadcast.
+            </p>
           </div>
           <div className="flex gap-2">
             <Button

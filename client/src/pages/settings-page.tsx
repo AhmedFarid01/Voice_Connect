@@ -76,8 +76,10 @@ export default function SettingsPage() {
       <NavBar />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-8">
         <div>
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="text-zinc-400 mt-1">Manage your account, sign-in, and privacy.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Settings</h1>
+          <p className="text-sm sm:text-base text-zinc-400 mt-1">
+            Manage your account, sign-in, and privacy.
+          </p>
         </div>
 
         {/* Account info */}

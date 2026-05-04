@@ -54,7 +54,7 @@ export default function ResetPasswordPage() {
           <span className="text-xl font-bold gradient-text">Lumen</span>
         </div>
 
-        <div className="glass gradient-border rounded-3xl p-8">
+        <div className="glass gradient-border rounded-3xl p-6 sm:p-8">
           {!token ? (
             <div className="text-center">
               <div className="mx-auto h-12 w-12 grid place-items-center rounded-2xl bg-rose-500/15 border border-rose-400/30 text-rose-300 mb-4">

@@ -116,7 +116,9 @@ export function NavBar({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="bg-zinc-950/95 backdrop-blur-xl border-white/10 text-white w-56"
+                sideOffset={8}
+                collisionPadding={12}
+                className="bg-zinc-950/95 backdrop-blur-xl border-white/10 text-white w-[min(calc(100vw-1.5rem),14rem)]"
               >
                 <div className="px-2 pt-2 pb-3 border-b border-white/5">
                   <p className="text-sm font-semibold truncate">

@@ -163,10 +163,12 @@ export default function UploadPage() {
   return (
     <div className="min-h-screen">
       <NavBar />
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Upload a video</h1>
-          <p className="text-zinc-400 mt-1">Pick a clip, fill in the details, and publish.</p>
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold">Upload a video</h1>
+          <p className="text-sm sm:text-base text-zinc-400 mt-1">
+            Pick a clip, fill in the details, and publish.
+          </p>
         </div>
 
         <form onSubmit={submit} className="grid lg:grid-cols-2 gap-8">

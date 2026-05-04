@@ -64,10 +64,12 @@ export default function GoLivePage() {
     return (
       <div className="min-h-screen">
         <NavBar />
-        <main className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold">Go live</h1>
-            <p className="text-zinc-400 mt-1">Set the stage, then hit the red button.</p>
+        <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+          <div className="mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold">Go live</h1>
+            <p className="text-sm sm:text-base text-zinc-400 mt-1">
+              Set the stage, then hit the red button.
+            </p>
           </div>
 
           <form onSubmit={startBroadcast} className="space-y-5 glass rounded-3xl p-6">

@@ -19,6 +19,13 @@
       radial-gradient(1000px 800px at 50% 110%, rgba(56, 189, 248, 0.10), transparent 60%),
       hsl(var(--background));
     background-attachment: fixed;
+    overflow-x: hidden;
+  }
+
+  /* Phones: respect the safe-area on notched devices. */
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 }
 

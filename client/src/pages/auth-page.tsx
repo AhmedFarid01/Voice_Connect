@@ -140,7 +140,7 @@ export default function AuthPage() {
       </div>
 
       {/* Right – form */}
-      <div className="flex items-center justify-center p-6 sm:p-12">
+      <div className="flex items-center justify-center px-4 py-8 sm:p-12">
         <div className="w-full max-w-md">
           <div className="lg:hidden mb-8 flex items-center gap-2">
             <span className="grid place-items-center h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400">
@@ -149,7 +149,7 @@ export default function AuthPage() {
             <span className="text-xl font-bold gradient-text">Lumen</span>
           </div>
 
-          <div className="glass gradient-border rounded-3xl p-8">
+          <div className="glass gradient-border rounded-3xl p-6 sm:p-8">
             <h2 className="text-2xl font-bold">
               {isLogin ? "Welcome back" : "Create your account"}
             </h2>

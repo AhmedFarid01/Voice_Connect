@@ -206,14 +206,14 @@ export default function ProfilePage() {
 
         {/* Header card */}
         <section
-          className="relative overflow-hidden rounded-3xl border border-white/10 p-6 sm:p-8"
+          className="relative overflow-hidden rounded-3xl border border-white/10 p-5 sm:p-8"
           style={{
             background: `radial-gradient(900px 400px at 0% 0%, ${color}33, transparent 60%), linear-gradient(135deg, #14102a, #0d0a1e)`,
           }}
         >
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
-            <div className="flex items-center gap-5 min-w-0">
-              <Avatar className="h-24 w-24 ring-4 ring-white/10 shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5 sm:gap-6">
+            <div className="flex items-center gap-4 sm:gap-5 min-w-0">
+              <Avatar className="h-20 w-20 sm:h-24 sm:w-24 ring-4 ring-white/10 shrink-0">
                 {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={display} />}
                 <AvatarFallback
                   className="text-white text-2xl font-bold"
@@ -232,7 +232,7 @@ export default function ProfilePage() {
                     maxLength={60}
                   />
                 ) : (
-                  <h1 className="text-3xl sm:text-4xl font-bold truncate">{display}</h1>
+                  <h1 className="text-2xl sm:text-4xl font-bold truncate">{display}</h1>
                 )}
                 <p className="text-sm text-zinc-400 mt-1">@{profile.username}</p>
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">

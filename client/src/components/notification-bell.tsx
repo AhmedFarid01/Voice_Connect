@@ -93,7 +93,8 @@ export function NotificationBell() {
       <PopoverContent
         align="end"
         sideOffset={10}
-        className="w-[360px] p-0 bg-zinc-950/95 backdrop-blur-xl border-white/10 text-white"
+        collisionPadding={12}
+        className="w-[min(calc(100vw-1.5rem),360px)] p-0 bg-zinc-950/95 backdrop-blur-xl border-white/10 text-white"
       >
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
           <p className="font-semibold">Notifications</p>

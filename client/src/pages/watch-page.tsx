@@ -248,7 +248,7 @@ export default function WatchPage() {
               </div>
 
               <div>
-                <h1 className="text-2xl font-bold leading-tight">{video.title}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold leading-tight">{video.title}</h1>
                 <div className="mt-2 flex items-center gap-4 text-sm text-zinc-400">
                   <span className="inline-flex items-center gap-1">
                     <Eye className="h-4 w-4" /> {video.views ?? 0} views
@@ -295,8 +295,8 @@ export default function WatchPage() {
                         : "rounded-xl border-white/15 hover:bg-white/10"
                     }
                   >
-                    <Heart className={`h-4 w-4 mr-2 ${liked ? "fill-current" : ""}`} />
-                    {likeCount}
+                    <Heart className={`h-4 w-4 sm:mr-2 ${liked ? "fill-current" : ""}`} />
+                    <span className="ml-1 sm:ml-0">{likeCount}</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -307,16 +307,16 @@ export default function WatchPage() {
                         : "rounded-xl border-white/15 hover:bg-white/10"
                     }
                   >
-                    <Bookmark className={`h-4 w-4 mr-2 ${saved ? "fill-current" : ""}`} />
-                    {saved ? "Saved" : "Save"}
+                    <Bookmark className={`h-4 w-4 sm:mr-2 ${saved ? "fill-current" : ""}`} />
+                    <span className="hidden sm:inline">{saved ? "Saved" : "Save"}</span>
                   </Button>
                   <Button
                     variant="outline"
                     onClick={onShare}
                     className="rounded-xl border-white/15 hover:bg-white/10"
                   >
-                    <Share2 className="h-4 w-4 mr-2" />
-                    Share
+                    <Share2 className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Share</span>
                   </Button>
                 </div>
               </div>
@@ -367,7 +367,7 @@ export default function WatchPage() {
                   </Button>
                 </form>
 
-                <ul className="mt-5 space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                <ul className="mt-5 space-y-4 max-h-[50vh] lg:max-h-[60vh] overflow-y-auto pr-1">
                   {comments && comments.length > 0 ? (
                     comments.map((c) => (
                       <CommentItem
