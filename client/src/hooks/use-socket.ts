@@ -28,10 +28,9 @@ export function useSocket() {
         setIsConnected(true);
         reconnectAttempts.current = 0;
 
-        // Register user after successful connection
         if (user) {
-          console.log('Registering user with socket:', user.id);
-          socket.current?.emit('register', user.id);
+          console.log('Authenticating socket for user:', user.id);
+          socket.current?.emit('auth', { userId: user.id });
         }
       });
 

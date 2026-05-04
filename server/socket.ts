@@ -1,286 +1,269 @@
 import { Server as HTTPServer } from "http";
-import { Server } from "socket.io";
+import { Server, Socket } from "socket.io";
 import { db } from "@db";
-import { users, calls } from "@db/schema";
-import { eq } from "drizzle-orm";
+import { users, broadcasts } from "@db/schema";
+import { eq, sql } from "drizzle-orm";
+import {
+  bindNotifications,
+  trackUserSocket,
+  untrackUserSocket,
+  notifyFollowersOfLive,
+} from "./notifications";
 
-export function setupSocket(server: HTTPServer) {
+interface SessionData {
+  userId?: number;
+  username?: string;
+}
+
+export function setupSocket(server: HTTPServer): Server {
   const io = new Server(server, {
-    cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] },
   });
 
-  const connectedUsers = new Map<number, string>();
+  bindNotifications(io);
 
-  io.on("connection", (socket) => {
-    let userId: number;
+  // Boot reconciliation: any broadcast still flagged isLive at startup is a
+  // zombie — the host process can't have survived a server restart, and our
+  // in-memory hostBySocket / viewersByBroadcast maps are empty. Wipe them.
+  db
+    .update(broadcasts)
+    .set({ isLive: false, endedAt: new Date() })
+    .where(eq(broadcasts.isLive, true))
+    .then((res) => {
+      const count = (res as unknown as { count?: number })?.count;
+      if (count) console.log(`[socket] reconciled ${count} stale live broadcast(s) on startup`);
+    })
+    .catch((err) => console.error("[socket] live broadcast reconciliation failed", err));
 
-    socket.on("register", async (id: number) => {
-      userId = id;
-      connectedUsers.set(id, socket.id);
+  // socketId -> { userId, username }
+  const sessions = new Map<string, SessionData>();
+  // broadcastId -> host socketId
+  const hostBySocket = new Map<number, string>();
+  // broadcastId -> Set<viewer socketIds>
+  const viewersByBroadcast = new Map<number, Set<string>>();
+
+  io.on("connection", (socket: Socket) => {
+    sessions.set(socket.id, {});
+
+    socket.on("auth", async ({ userId }: { userId: number }) => {
+      const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (u) {
+        sessions.set(socket.id, { userId: u.id, username: u.username });
+        trackUserSocket(u.id, socket.id);
+        await db.update(users).set({ status: "online" }).where(eq(users.id, u.id));
+        io.emit("user:status", { userId: u.id, status: "online" });
+      }
+    });
+
+    // ── Live broadcast: host side ───────────────────────────────────────
+    socket.on("live:host:start", async ({ broadcastId }: { broadcastId: number }) => {
+      const sess = sessions.get(socket.id);
+      if (!sess?.userId) return;
+
+      const [b] = await db.select().from(broadcasts).where(eq(broadcasts.id, broadcastId)).limit(1);
+      if (!b || b.hostId !== sess.userId) {
+        socket.emit("live:error", { message: "Not the host" });
+        return;
+      }
+
+      socket.join(`live:${broadcastId}`);
+      hostBySocket.set(broadcastId, socket.id);
+      const existingViewers = viewersByBroadcast.get(broadcastId) ?? new Set<string>();
+      viewersByBroadcast.set(broadcastId, existingViewers);
 
       await db
-        .update(users)
-        .set({ status: "online" })
-        .where(eq(users.id, id));
+        .update(broadcasts)
+        .set({ isLive: true, viewerCount: existingViewers.size })
+        .where(eq(broadcasts.id, broadcastId));
 
-      io.emit("userStatus", { userId: id, status: "online" });
+      io.emit("broadcast:started", {
+        broadcastId,
+        hostId: sess.userId,
+        title: b.title,
+      });
+
+      socket.emit("live:host:ready", { broadcastId });
+
+      // Anyone who joined while we were still warming up: trigger an offer now.
+      Array.from(existingViewers).forEach((viewerSocketId) => {
+        const viewerSess = sessions.get(viewerSocketId);
+        socket.emit("live:viewer:joined", {
+          viewerId: viewerSocketId,
+          username: viewerSess?.username,
+        });
+      });
+
+      // Fan out a 'live' notification to all followers.
+      notifyFollowersOfLive(sess.userId, broadcastId, b.title).catch((err) =>
+        console.error("notifyFollowersOfLive", err),
+      );
     });
 
-    socket.on("call:start", async ({ receiverId }) => {
-      try {
-        if (!userId) {
-          socket.emit("call:error", { message: "User not registered" });
-          return;
-        }
+    // viewer asks to join → host gets notified to create an offer
+    socket.on("live:viewer:join", async ({ broadcastId }: { broadcastId: number }) => {
+      const sess = sessions.get(socket.id);
+      if (!sess?.userId) return;
 
-        // Get caller's username
-        const [caller] = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1);
-
-        if (!caller) {
-          socket.emit("call:error", { message: "Caller not found" });
-          return;
-        }
-
-        const [call] = await db
-          .insert(calls)
-          .values({
-            callerId: userId,
-            receiverId,
-            status: "pending",
-            startTime: new Date()
-          })
-          .returning();
-
-        const receiverSocket = connectedUsers.get(receiverId);
-        if (receiverSocket) {
-          // Send incoming call notification with caller's username
-          io.to(receiverSocket).emit("call:incoming", {
-            callId: call.id,
-            from: userId,
-            username: caller.username
-          });
-        }
-
-        socket.emit("call:started", { callId: call.id });
-      } catch (error) {
-        console.error("Error starting call:", error);
-        socket.emit("call:error", { message: "Failed to start call" });
+      const [b] = await db.select().from(broadcasts).where(eq(broadcasts.id, broadcastId)).limit(1);
+      if (!b) {
+        socket.emit("live:error", { message: "Broadcast not found" });
+        return;
       }
-    });
+      if (b.endedAt) {
+        socket.emit("broadcast:ended", { broadcastId });
+        return;
+      }
 
-    socket.on("call:accept", async ({ callId }) => {
-      try {
+      // If the row says it's live but our in-memory map has no host socket
+      // (or the recorded socket is no longer connected), it's a zombie.
+      // Mark it ended and tell the viewer.
+      let hostSocketId = hostBySocket.get(broadcastId);
+      if (hostSocketId && !io.sockets.sockets.get(hostSocketId)) {
+        hostBySocket.delete(broadcastId);
+        viewersByBroadcast.delete(broadcastId);
+        hostSocketId = undefined;
+      }
+
+      if (b.isLive && !hostSocketId) {
         await db
-          .update(calls)
-          .set({ status: "active" })
-          .where(eq(calls.id, callId));
+          .update(broadcasts)
+          .set({ isLive: false, endedAt: new Date() })
+          .where(eq(broadcasts.id, broadcastId));
+        socket.emit("broadcast:ended", { broadcastId });
+        return;
+      }
 
-        const [call] = await db
-          .select()
-          .from(calls)
-          .where(eq(calls.id, callId))
-          .limit(1);
+      socket.join(`live:${broadcastId}`);
+      const viewers = viewersByBroadcast.get(broadcastId) ?? new Set<string>();
+      viewers.add(socket.id);
+      viewersByBroadcast.set(broadcastId, viewers);
 
-        if (call) {
-          const callerSocket = connectedUsers.get(call.callerId);
-          if (callerSocket) {
-            io.to(callerSocket).emit("call:accepted", { callId });
-          }
-        }
-      } catch (error) {
-        console.error("Error accepting call:", error);
-        socket.emit("call:error", { message: "Failed to accept call" });
+      await db
+        .update(broadcasts)
+        .set({ viewerCount: viewers.size })
+        .where(eq(broadcasts.id, broadcastId));
+
+      io.to(`live:${broadcastId}`).emit("live:viewers", { count: viewers.size });
+
+      if (hostSocketId) {
+        io.to(hostSocketId).emit("live:viewer:joined", {
+          viewerId: socket.id,
+          username: sess.username,
+        });
+      } else {
+        // Host hasn't connected yet — they'll catch us on live:host:start.
+        socket.emit("live:waiting-host", { broadcastId });
       }
     });
 
-    socket.on("call:reject", async ({ callId }) => {
-      try {
+    socket.on("live:viewer:leave", async ({ broadcastId }: { broadcastId: number }) => {
+      socket.leave(`live:${broadcastId}`);
+      const viewers = viewersByBroadcast.get(broadcastId);
+      if (viewers) {
+        viewers.delete(socket.id);
         await db
-          .update(calls)
-          .set({
-            status: "rejected",
-            endTime: new Date()
-          })
-          .where(eq(calls.id, callId));
-
-        const [call] = await db
-          .select()
-          .from(calls)
-          .where(eq(calls.id, callId))
-          .limit(1);
-
-        if (call) {
-          const callerSocket = connectedUsers.get(call.callerId);
-          if (callerSocket) {
-            io.to(callerSocket).emit("call:rejected", { callId });
-          }
-        }
-      } catch (error) {
-        console.error("Error rejecting call:", error);
-        socket.emit("call:error", { message: "Failed to reject call" });
+          .update(broadcasts)
+          .set({ viewerCount: viewers.size })
+          .where(eq(broadcasts.id, broadcastId));
+        io.to(`live:${broadcastId}`).emit("live:viewers", { count: viewers.size });
       }
+      const hostSocketId = hostBySocket.get(broadcastId);
+      if (hostSocketId) {
+        io.to(hostSocketId).emit("live:viewer:left", { viewerId: socket.id });
+      }
+    });
+
+    // WebRTC signaling: host ↔ specific viewer
+    socket.on("live:signal", ({ to, signal, broadcastId }: { to: string; signal: any; broadcastId: number }) => {
+      io.to(to).emit("live:signal", {
+        from: socket.id,
+        signal,
+        broadcastId,
+      });
+    });
+
+    // Live chat in broadcast room
+    socket.on("live:chat", async ({ broadcastId, message }: { broadcastId: number; message: string }) => {
+      const sess = sessions.get(socket.id);
+      if (!sess?.userId || !message?.trim()) return;
+      io.to(`live:${broadcastId}`).emit("live:chat", {
+        userId: sess.userId,
+        username: sess.username,
+        message: message.slice(0, 300),
+        ts: Date.now(),
+      });
+    });
+
+    // Floating emoji reactions during live broadcasts.
+    socket.on(
+      "live:reaction",
+      ({ broadcastId, emoji }: { broadcastId: number; emoji: string }) => {
+        const sess = sessions.get(socket.id);
+        if (!sess?.userId) return;
+        if (!emoji || typeof emoji !== "string") return;
+        // Hard cap per emoji length so it can't be abused as a chat channel.
+        const safe = emoji.slice(0, 8);
+        io.to(`live:${broadcastId}`).emit("live:reaction", {
+          userId: sess.userId,
+          emoji: safe,
+          ts: Date.now(),
+        });
+      },
+    );
+
+    socket.on("live:host:end", async ({ broadcastId }: { broadcastId: number }) => {
+      const sess = sessions.get(socket.id);
+      if (!sess?.userId) return;
+      const [b] = await db.select().from(broadcasts).where(eq(broadcasts.id, broadcastId)).limit(1);
+      if (!b || b.hostId !== sess.userId) return;
+
+      await db
+        .update(broadcasts)
+        .set({ isLive: false, endedAt: new Date() })
+        .where(eq(broadcasts.id, broadcastId));
+
+      io.to(`live:${broadcastId}`).emit("broadcast:ended", { broadcastId });
+      hostBySocket.delete(broadcastId);
+      viewersByBroadcast.delete(broadcastId);
     });
 
     socket.on("disconnect", async () => {
-      if (userId) {
-        connectedUsers.delete(userId);
+      const sess = sessions.get(socket.id);
 
-        await db
-          .update(users)
-          .set({ status: "offline" })
-          .where(eq(users.id, userId));
-
-        io.emit("userStatus", { userId, status: "offline" });
+      // If host, end every broadcast they own
+      const hostEntries = Array.from(hostBySocket.entries());
+      for (const [bid, hostSid] of hostEntries) {
+        if (hostSid === socket.id) {
+          await db
+            .update(broadcasts)
+            .set({ isLive: false, endedAt: new Date() })
+            .where(eq(broadcasts.id, bid));
+          io.to(`live:${bid}`).emit("broadcast:ended", { broadcastId: bid });
+          hostBySocket.delete(bid);
+          viewersByBroadcast.delete(bid);
+        }
       }
-    });
 
-    socket.on("call:end", async ({ callId }) => {
-      try {
-        if (!callId) {
-          socket.emit("call:error", { message: "Invalid call ID" });
-          return;
+      // If viewer, decrement counts
+      const viewerEntries = Array.from(viewersByBroadcast.entries());
+      for (const [bid, viewers] of viewerEntries) {
+        if (viewers.delete(socket.id)) {
+          await db
+            .update(broadcasts)
+            .set({ viewerCount: viewers.size })
+            .where(eq(broadcasts.id, bid));
+          io.to(`live:${bid}`).emit("live:viewers", { count: viewers.size });
+          const hostSid = hostBySocket.get(bid);
+          if (hostSid) io.to(hostSid).emit("live:viewer:left", { viewerId: socket.id });
         }
-
-        const [existingCall] = await db
-          .select()
-          .from(calls)
-          .where(eq(calls.id, callId))
-          .limit(1);
-
-        if (!existingCall) {
-          socket.emit("call:error", { message: "Call not found" });
-          return;
-        }
-
-        const [updatedCall] = await db
-          .update(calls)
-          .set({
-            status: "completed",
-            endTime: new Date()
-          })
-          .where(eq(calls.id, callId))
-          .returning();
-
-        // Send call ended event to all participants
-        if (updatedCall) {
-          // If it's a room call
-          if (updatedCall.roomId) {
-            io.to(`room:${updatedCall.roomId}`).emit("call:ended", { callId });
-          } else {
-            // For peer-to-peer calls
-            const receiverSocket = connectedUsers.get(updatedCall.receiverId);
-            if (receiverSocket) {
-              io.to(receiverSocket).emit("call:ended", { callId });
-            }
-          }
-          socket.emit("call:ended", { callId });
-        }
-      } catch (error) {
-        console.error("Error ending call:", error);
-        socket.emit("call:error", { message: "Failed to end call" });
       }
-    });
 
-    socket.on("room:create", async ({ name }) => {
-      try {
-        const [room] = await db
-          .insert(rooms)
-          .values({
-            name,
-            createdBy: userId,
-            isActive: true
-          })
-          .returning();
-
-        if (!userId) {
-          socket.emit("room:error", { message: "User not registered" });
-          return;
-        }
-
-        await db.insert(roomParticipants).values({
-          roomId: room.id,
-          userId: userId
-        });
-
-        socket.join(`room:${room.id}`);
-        userRooms.set(userId, room.id);
-        socket.emit("room:created", room);
-      } catch (error) {
-        console.error("Error creating room:", error);
-        socket.emit("room:error", { message: "Failed to create room" });
+      if (sess?.userId) {
+        untrackUserSocket(sess.userId, socket.id);
+        await db.update(users).set({ status: "offline" }).where(eq(users.id, sess.userId));
+        io.emit("user:status", { userId: sess.userId, status: "offline" });
       }
-    });
-
-    socket.on("room:join", async ({ roomId }) => {
-      try {
-        if (!userId) {
-          socket.emit("room:error", { message: "User not registered" });
-          return;
-        }
-
-        const [room] = await db
-          .select()
-          .from(rooms)
-          .where(eq(rooms.id, roomId))
-          .limit(1);
-
-        if (!room) {
-          socket.emit("room:error", { message: "Room not found" });
-          return;
-        }
-
-        await db.insert(roomParticipants).values({
-          roomId,
-          userId: userId,
-          joinedAt: new Date()
-        });
-
-        socket.join(`room:${roomId}`);
-        userRooms.set(userId, roomId);
-        io.to(`room:${roomId}`).emit("user:joined", { userId });
-      } catch (error) {
-        console.error("Error joining room:", error);
-        socket.emit("room:error", { message: "Failed to join room" });
-      }
-    });
-
-    socket.on("room:leave", async ({ roomId }) => {
-      try {
-        if (!userId) {
-          socket.emit("room:error", { message: "User not registered" });
-          return;
-        }
-
-        await db
-          .update(roomParticipants)
-          .set({ leftAt: new Date() })
-          .where(eq(roomParticipants.userId, userId));
-
-        socket.leave(`room:${roomId}`);
-        userRooms.delete(userId);
-        io.to(`room:${roomId}`).emit("user:left", { userId });
-      } catch (error) {
-        console.error("Error leaving room:", error);
-        socket.emit("room:error", { message: "Failed to leave room" });
-      }
-    });
-
-    socket.on("signal", ({ to, signal, roomId }) => {
-      const toSocket = connectedUsers.get(to);
-      if (toSocket) {
-        io.to(toSocket).emit("signal", {
-          from: userId,
-          signal,
-          roomId
-        });
-      }
+      sessions.delete(socket.id);
     });
   });
 

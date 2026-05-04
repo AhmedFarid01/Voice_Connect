@@ -1,44 +1,28 @@
-# Use Node.js 20 as the base image
+# Lumen — video sharing & live broadcast app
 FROM node:20-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# System deps: netcat for the DB readiness probe; ffmpeg for thumbnail/duration
+# extraction on uploaded videos.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends netcat-openbsd ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
+# Install JS deps first for better layer caching
+COPY package*.json ./
 RUN npm install
 
-# Copy source code
+# Copy the rest of the source (incl. migrations/ and db/migrate.ts)
 COPY . .
 
-# Build the application
+# Build the client + server bundles
 RUN npm run build
 
-# Create a startup script with proper line endings
-RUN echo '#!/bin/bash\n\
-echo "Waiting for database to be ready..."\n\
-while ! nc -z postgres 5432; do\n\
-  sleep 1\n\
-done\n\
-echo "Database is ready!"\n\
-\n\
-echo "Pushing database schema..."\n\
-npm run db:push\n\
-\n\
-echo "Starting application..."\n\
-npm run start' > /app/docker-entrypoint.sh
+# Normalize line endings + make entrypoint executable (handles Windows checkouts)
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh \
+    && chmod +x /app/docker-entrypoint.sh
 
-# Make the script executable and ensure proper line endings
-RUN chmod +x /app/docker-entrypoint.sh && \
-    sed -i 's/\r$//' /app/docker-entrypoint.sh
-
-# Install netcat for database health check
-RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
-
-# Expose port 5000
 EXPOSE 5000
 
-# Start the application using the entrypoint script with bash
-CMD ["/bin/bash", "/app/docker-entrypoint.sh"]
+CMD ["/app/docker-entrypoint.sh"]

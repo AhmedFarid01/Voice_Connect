@@ -5,7 +5,7 @@ interface LoginData {
   username: string;
   password: string;
   email?: string;
-  phoneNumber?: string;
+  displayName?: string;
 }
 
 type RequestResult = {

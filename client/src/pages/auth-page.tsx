@@ -1,217 +1,294 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { useUser } from "@/hooks/use-user";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
-
-const loginSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
+import { Loader2, Sparkles, Radio, Upload, Heart } from "lucide-react";
+import { FaGoogle, FaGithub } from "react-icons/fa";
 
 const registerSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  email: z.string().email("Invalid email address"),
-  phoneNumber: z.string().min(10, "Phone number must be at least 10 digits"),
+  email: z.string().email("Invalid email"),
+  displayName: z.string().optional(),
 });
 
-type LoginFormData = z.infer<typeof loginSchema>;
-type RegisterFormData = z.infer<typeof registerSchema>;
+const loginSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(6),
+});
+
+interface ProviderStatus {
+  google: boolean;
+  github: boolean;
+}
 
 export default function AuthPage() {
-  const [isLogin, setIsLogin] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login, register: registerUser } = useUser();
   const { toast } = useToast();
-  const [formValues, setFormValues] = useState({
+  const [form, setForm] = useState({
     username: "",
     password: "",
     email: "",
-    phoneNumber: "",
+    displayName: "",
   });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormValues(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
+  const { data: providers } = useQuery<ProviderStatus>({
+    queryKey: ["/api/auth/providers"],
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      if (isLogin) {
-        // Login flow
-        const loginData = {
-          username: formValues.username,
-          password: formValues.password
-        };
-        const result = await login(loginData);
-        if (!result.ok) {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: result.message,
-          });
-          return;
-        }
-      } else {
-        // Register flow
-        const parsedData = registerSchema.safeParse(formValues);
-        if (!parsedData.success) {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Please check your input and try again",
-          });
-          return;
-        }
-
-        const result = await registerUser(formValues);
-        if (!result.ok) {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: result.message,
-          });
-          return;
-        }
-      }
-
-      toast({
-        title: "Success",
-        description: isLogin ? "Logged in successfully" : "Registered successfully",
-      });
-    } catch (error) {
+  // Show a toast if we got bounced back here with ?authError=...
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("authError");
+    if (err) {
       toast({
         variant: "destructive",
-        title: "Error",
-        description: "An unexpected error occurred",
+        title: "Sign-in failed",
+        description: `${err.charAt(0).toUpperCase() + err.slice(1)} authentication didn't complete.`,
       });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [toast]);
+
+  const anyProvider = !!(providers?.google || providers?.github);
+
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  };
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      if (isLogin) {
+        const parsed = loginSchema.safeParse(form);
+        if (!parsed.success) {
+          toast({ variant: "destructive", title: "Invalid input", description: "Check your credentials" });
+          return;
+        }
+        const r = await login({ username: form.username, password: form.password });
+        if (!r.ok) {
+          toast({ variant: "destructive", title: "Login failed", description: r.message });
+          return;
+        }
+        toast({ title: "Welcome back!", description: "You're signed in." });
+      } else {
+        const parsed = registerSchema.safeParse(form);
+        if (!parsed.success) {
+          toast({
+            variant: "destructive",
+            title: "Invalid input",
+            description: parsed.error.issues[0]?.message ?? "Check the form",
+          });
+          return;
+        }
+        const r = await registerUser(form);
+        if (!r.ok) {
+          toast({ variant: "destructive", title: "Sign-up failed", description: r.message });
+          return;
+        }
+        toast({ title: "Welcome to Lumen!", description: "Your account is ready." });
+      }
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error", description: err?.message ?? "Unexpected error" });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const toggleAuthMode = () => {
-    setIsLogin(!isLogin);
-    setFormValues({
-      username: "",
-      password: "",
-      email: "",
-      phoneNumber: "",
-    });
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-[400px]">
-        <CardHeader>
-          <CardTitle>{isLogin ? "Login" : "Register"}</CardTitle>
-          <CardDescription>
-            {isLogin ? "Enter your credentials" : "Create a new account"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-medium">
-                Username
-              </label>
-              <Input
-                id="username"
-                name="username"
-                type="text"
-                value={formValues.username}
-                onChange={handleInputChange}
-                placeholder="Enter username"
-                disabled={isSubmitting}
-              />
-            </div>
+    <div className="min-h-screen grid lg:grid-cols-2">
+      {/* Left – brand panel */}
+      <div className="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden">
+        <div
+          className="absolute inset-0 -z-10"
+          style={{
+            background:
+              "radial-gradient(800px 500px at 20% 30%, rgba(167,139,250,0.35), transparent 60%), radial-gradient(700px 500px at 80% 70%, rgba(244,114,182,0.25), transparent 60%), linear-gradient(135deg, #0d0a1a, #100416)",
+          }}
+        />
 
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium">
-                Password
-              </label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                value={formValues.password}
-                onChange={handleInputChange}
-                placeholder="Enter password"
-                disabled={isSubmitting}
-              />
-            </div>
+        <div className="flex items-center gap-3">
+          <span className="grid place-items-center h-11 w-11 rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400 shadow-2xl shadow-fuchsia-500/40">
+            <Sparkles className="h-5 w-5 text-white" />
+          </span>
+          <span className="text-2xl font-bold gradient-text">Lumen</span>
+        </div>
 
-            {!isLogin && (
+        <div className="space-y-6 max-w-md">
+          <h1 className="text-5xl font-bold leading-tight">
+            Share what you <span className="gradient-text">love.</span>
+            <br />
+            Go <span className="gradient-text">live.</span>
+          </h1>
+          <p className="text-zinc-400 text-lg">
+            Upload videos, broadcast live in seconds, and connect with creators across the globe.
+          </p>
+          <div className="space-y-3 pt-4">
+            <Feature icon={<Upload className="h-4 w-4" />} title="Upload videos" desc="Share clips up to several minutes long." />
+            <Feature icon={<Radio className="h-4 w-4" />} title="Go live instantly" desc="Stream from your camera with one click." />
+            <Feature icon={<Heart className="h-4 w-4" />} title="Build a following" desc="Likes, comments, and a real-time feed." />
+          </div>
+        </div>
+
+        <p className="text-xs text-zinc-500">© Lumen — share something today.</p>
+      </div>
+
+      {/* Right – form */}
+      <div className="flex items-center justify-center p-6 sm:p-12">
+        <div className="w-full max-w-md">
+          <div className="lg:hidden mb-8 flex items-center gap-2">
+            <span className="grid place-items-center h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400">
+              <Sparkles className="h-4 w-4 text-white" />
+            </span>
+            <span className="text-xl font-bold gradient-text">Lumen</span>
+          </div>
+
+          <div className="glass gradient-border rounded-3xl p-8">
+            <h2 className="text-2xl font-bold">
+              {isLogin ? "Welcome back" : "Create your account"}
+            </h2>
+            <p className="text-sm text-zinc-400 mt-1">
+              {isLogin ? "Sign in to keep watching." : "Join in less than a minute."}
+            </p>
+
+            {anyProvider && (
               <>
-                <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium">
-                    Email
-                  </label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={formValues.email}
-                    onChange={handleInputChange}
-                    placeholder="Enter email"
-                    disabled={isSubmitting}
-                  />
+                <div className="mt-6 grid gap-2.5">
+                  {providers?.google && (
+                    <a
+                      href="/api/auth/google"
+                      className="inline-flex items-center justify-center gap-3 h-11 rounded-xl bg-white text-zinc-900 font-semibold hover:bg-zinc-100 transition shadow"
+                    >
+                      <FaGoogle className="h-4 w-4 text-[#ea4335]" />
+                      Continue with Google
+                    </a>
+                  )}
+                  {providers?.github && (
+                    <a
+                      href="/api/auth/github"
+                      className="inline-flex items-center justify-center gap-3 h-11 rounded-xl bg-zinc-900 text-white font-semibold border border-white/10 hover:bg-zinc-800 transition"
+                    >
+                      <FaGithub className="h-4 w-4" />
+                      Continue with GitHub
+                    </a>
+                  )}
                 </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="phoneNumber" className="text-sm font-medium">
-                    Phone Number
-                  </label>
-                  <Input
-                    id="phoneNumber"
-                    name="phoneNumber"
-                    type="tel"
-                    value={formValues.phoneNumber}
-                    onChange={handleInputChange}
-                    placeholder="Enter phone number"
-                    disabled={isSubmitting}
-                  />
+                <div className="mt-6 flex items-center gap-3 text-xs text-zinc-500">
+                  <span className="h-px flex-1 bg-white/10" />
+                  or use email
+                  <span className="h-px flex-1 bg-white/10" />
                 </div>
               </>
             )}
 
-            <div className="flex flex-col gap-2">
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                {isLogin ? "Login" : "Register"}
-              </Button>
+            <form onSubmit={onSubmit} className={anyProvider ? "mt-6 space-y-4" : "mt-6 space-y-4"}>
+              <Field label="Username">
+                <Input
+                  name="username"
+                  value={form.username}
+                  onChange={onChange}
+                  placeholder="janedoe"
+                  className="bg-white/5 border-white/10 h-11 rounded-xl"
+                  disabled={isSubmitting}
+                />
+              </Field>
+
+              <Field label="Password">
+                <Input
+                  name="password"
+                  type="password"
+                  value={form.password}
+                  onChange={onChange}
+                  placeholder="••••••••"
+                  className="bg-white/5 border-white/10 h-11 rounded-xl"
+                  disabled={isSubmitting}
+                />
+              </Field>
+
+              {!isLogin && (
+                <>
+                  <Field label="Display name">
+                    <Input
+                      name="displayName"
+                      value={form.displayName}
+                      onChange={onChange}
+                      placeholder="Jane Doe"
+                      className="bg-white/5 border-white/10 h-11 rounded-xl"
+                      disabled={isSubmitting}
+                    />
+                  </Field>
+                  <Field label="Email">
+                    <Input
+                      name="email"
+                      type="email"
+                      value={form.email}
+                      onChange={onChange}
+                      placeholder="you@example.com"
+                      className="bg-white/5 border-white/10 h-11 rounded-xl"
+                      disabled={isSubmitting}
+                    />
+                  </Field>
+                </>
+              )}
+
               <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-400 hover:opacity-90 border-0 font-semibold shadow-lg shadow-fuchsia-500/30"
+              >
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                {isLogin ? "Sign in" : "Create account"}
+              </Button>
+
+              <button
                 type="button"
-                variant="link"
-                onClick={toggleAuthMode}
+                onClick={() => setIsLogin((v) => !v)}
+                className="w-full text-sm text-zinc-400 hover:text-white transition"
                 disabled={isSubmitting}
               >
-                {isLogin
-                  ? "Don't have an account? Register"
-                  : "Already have an account? Login"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+                {isLogin ? "New here? Create an account →" : "Already have an account? Sign in →"}
+              </button>
+              {isLogin && (
+                <a
+                  href="/forgot-password"
+                  className="block text-center text-xs text-zinc-500 hover:text-violet-300 transition"
+                >
+                  Forgot your password?
+                </a>
+              )}
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">{label}</span>
+      <div className="mt-1.5">{children}</div>
+    </label>
+  );
+}
+
+function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 grid place-items-center h-8 w-8 rounded-lg bg-white/5 border border-white/10 text-violet-300">
+        {icon}
+      </span>
+      <div>
+        <p className="font-medium">{title}</p>
+        <p className="text-sm text-zinc-400">{desc}</p>
+      </div>
     </div>
   );
 }

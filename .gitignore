@@ -2,3 +2,12 @@ node_modules
 dist
 .DS_Store
 *.tar.gz
+
+# Local env (contains secrets — never commit)
+.env
+.env.local
+.env.*.local
+
+# Persisted state from local runs
+uploads
+postgres_data

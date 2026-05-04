@@ -6,18 +6,40 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - NODE_ENV=development
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-voip_db}
-      - ASTERISK_HOST=asterisk
-      - ASTERISK_PORT=5060
+      - NODE_ENV=${NODE_ENV:-production}
+      # Inside the network the app reaches the DB at host "postgres", regardless
+      # of what DATABASE_URL says in your .env (which targets your host machine
+      # for local `npm run dev`). We construct the in-network URL here.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-lumen_db}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-prod}
+      - SECURE_COOKIES=${SECURE_COOKIES:-false}
+      # OAuth — leave blank to disable a provider; the UI hides buttons that
+      # aren't configured.
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_CALLBACK_URL=${GITHUB_CALLBACK_URL:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - MAIL_FROM=${MAIL_FROM:-Lumen <no-reply@lumen.local>}
+      # If you're running with a named tunnel, set PUBLIC_BASE_URL=https://your.domain
+      # in .env so password-reset emails contain the correct link.
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - CLOUDFLARE_TUNNEL_HOSTNAME=${CLOUDFLARE_TUNNEL_HOSTNAME:-}
     depends_on:
-      - postgres
-      - asterisk
+      postgres:
+        condition: service_healthy
     volumes:
-      - .:/app
-      - /app/node_modules
+      - lumen_uploads:/app/uploads
     networks:
-      - voip-network
+      - lumen-network
 
   postgres:
     image: postgres:15-alpine
@@ -26,44 +48,51 @@ services:
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-voip_db}
+      - POSTGRES_DB=${POSTGRES_DB:-lumen_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d
     networks:
-      - voip-network
+      - lumen-network
     command: postgres -c 'max_connections=200'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  asterisk:
-    image: andrius/asterisk
-    ports:
-      - "5060:5060/udp"    # SIP
-      - "10000-10100:10000-10100/udp"  # RTP
-    volumes:
-      - asterisk_config:/etc/asterisk
-      - asterisk_sounds:/var/lib/asterisk/sounds
-      - asterisk_voicemail:/var/spool/asterisk/voicemail
+  # Public HTTPS URL for demos — Quick tunnel (random *.trycloudflare.com URL,
+  # no Cloudflare account needed). Started by `npm run demo` when no tunnel
+  # token is configured.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --url http://app:5000 --no-autoupdate
+    depends_on:
+      - app
     networks:
-      - voip-network
-    environment:
-      - ASTERISK_ADMIN_PASSWORD=${ASTERISK_ADMIN_PASSWORD:-admin}
-    healthcheck:
-      test: ["CMD-SHELL", "asterisk -rx 'core show version' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - lumen-network
+    profiles:
+      - demo
+
+  # Public HTTPS URL on YOUR domain — Named tunnel. Set CLOUDFLARE_TUNNEL_TOKEN
+  # (and optionally CLOUDFLARE_TUNNEL_HOSTNAME for nicer log output) in .env,
+  # then `npm run demo` picks this profile automatically.
+  cloudflared-named:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - app
+    networks:
+      - lumen-network
+    profiles:
+      - demo-named
 
 volumes:
   postgres_data:
-  asterisk_config:
-  asterisk_sounds:
-  asterisk_voicemail:
+  lumen_uploads:
 
 networks:
-  voip-network:
+  lumen-network:
     driver: bridge

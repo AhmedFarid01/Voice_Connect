@@ -8,6 +8,7 @@ const __dirname = dirname(__filename);
 import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
+import { mountOgRoutes } from "./og";
 
 const viteLogger = createLogger();
 
@@ -74,6 +75,10 @@ export function serveStatic(app: Express) {
   }
 
   app.use(express.static(distPath));
+
+  // OG-aware routes for social link previews (/watch/:id, /live/:id) — bots get
+  // a server-rendered meta block; humans fall through to the SPA.
+  mountOgRoutes(app, distPath);
 
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {

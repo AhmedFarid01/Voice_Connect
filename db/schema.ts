@@ -5,102 +5,168 @@ import { relations } from "drizzle-orm";
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").unique().notNull(),
-  password: text("password").notNull(),
+  password: text("password"),
   email: text("email").unique().notNull(),
-  phoneNumber: text("phone_number").unique().notNull(),
+  displayName: text("display_name"),
+  avatarColor: text("avatar_color").default("#6366f1"),
+  avatarUrl: text("avatar_url"),
+  bio: text("bio"),
   status: text("status").default("offline"),
-  createdAt: timestamp("created_at").defaultNow()
-});
-
-export const rooms = pgTable("rooms", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  createdBy: integer("created_by").references(() => users.id).notNull(),
+  profileViews: integer("profile_views").default(0),
+  provider: text("provider").default("local"),
+  providerId: text("provider_id"),
   createdAt: timestamp("created_at").defaultNow(),
-  isActive: boolean("is_active").default(true),
 });
 
-export const roomParticipants = pgTable("room_participants", {
-  id: serial("id").primaryKey(),
-  roomId: integer("room_id").references(() => rooms.id).notNull(),
-  userId: integer("user_id").references(() => users.id).notNull(),
-  joinedAt: timestamp("joined_at").defaultNow(),
-  leftAt: timestamp("left_at"),
-});
-
-export const calls = pgTable("calls", {
-  id: serial("id").primaryKey(),
-  callerId: integer("caller_id").references(() => users.id).notNull(),
-  receiverId: integer("receiver_id").references(() => users.id).notNull(),
-  roomId: integer("room_id").references(() => rooms.id), // Made optional for direct calls
-  status: text("status").notNull(),
-  startTime: timestamp("start_time").notNull(),
-  endTime: timestamp("end_time"),
-  duration: integer("duration"),
-});
-
-export const contacts = pgTable("contacts", {
+export const videos = pgTable("videos", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id).notNull(),
-  contactId: integer("contact_id").references(() => users.id).notNull(),
-  nickname: text("nickname"),
-  createdAt: timestamp("created_at").defaultNow()
+  title: text("title").notNull(),
+  description: text("description"),
+  thumbnail: text("thumbnail"),
+  videoUrl: text("video_url").notNull(),
+  durationSec: integer("duration_sec").default(0),
+  views: integer("views").default(0),
+  category: text("category").default("General"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const callsRelations = relations(calls, ({ one }) => ({
-  caller: one(users, {
-    fields: [calls.callerId],
+export const videoLikes = pgTable("video_likes", {
+  id: serial("id").primaryKey(),
+  videoId: integer("video_id").references(() => videos.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const videoComments = pgTable("video_comments", {
+  id: serial("id").primaryKey(),
+  videoId: integer("video_id").references(() => videos.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const broadcasts = pgTable("broadcasts", {
+  id: serial("id").primaryKey(),
+  hostId: integer("host_id").references(() => users.id).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  isLive: boolean("is_live").default(true),
+  viewerCount: integer("viewer_count").default(0),
+  startedAt: timestamp("started_at").defaultNow(),
+  endedAt: timestamp("ended_at"),
+});
+
+export const follows = pgTable("follows", {
+  id: serial("id").primaryKey(),
+  followerId: integer("follower_id").references(() => users.id).notNull(),
+  followingId: integer("following_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const videoSaves = pgTable("video_saves", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  videoId: integer("video_id").references(() => videos.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const watchHistory = pgTable("watch_history", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  videoId: integer("video_id").references(() => videos.id).notNull(),
+  progressSec: integer("progress_sec").default(0),
+  completed: boolean("completed").default(false),
+  lastWatchedAt: timestamp("last_watched_at").defaultNow(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  actorId: integer("actor_id").references(() => users.id),
+  type: text("type").notNull(), // 'follow' | 'like' | 'comment' | 'live'
+  videoId: integer("video_id").references(() => videos.id),
+  broadcastId: integer("broadcast_id").references(() => broadcasts.id),
+  content: text("content"),
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const videosRelations = relations(videos, ({ one, many }) => ({
+  author: one(users, {
+    fields: [videos.userId],
     references: [users.id],
   }),
-  receiver: one(users, {
-    fields: [calls.receiverId],
-    references: [users.id],
-  }),
-  room: one(rooms, {
-    fields: [calls.roomId],
-    references: [rooms.id],
-  }),
+  likes: many(videoLikes),
+  comments: many(videoComments),
 }));
 
-export const roomsRelations = relations(rooms, ({ one, many }) => ({
-  creator: one(users, {
-    fields: [rooms.createdBy],
-    references: [users.id],
-  }),
-  participants: many(roomParticipants),
-}));
-
-export const roomParticipantsRelations = relations(roomParticipants, ({ one }) => ({
-  room: one(rooms, {
-    fields: [roomParticipants.roomId],
-    references: [rooms.id],
+export const videoLikesRelations = relations(videoLikes, ({ one }) => ({
+  video: one(videos, {
+    fields: [videoLikes.videoId],
+    references: [videos.id],
   }),
   user: one(users, {
-    fields: [roomParticipants.userId],
+    fields: [videoLikes.userId],
     references: [users.id],
   }),
 }));
 
-export const contactsRelations = relations(contacts, ({ one }) => ({
+export const videoCommentsRelations = relations(videoComments, ({ one }) => ({
+  video: one(videos, {
+    fields: [videoComments.videoId],
+    references: [videos.id],
+  }),
   user: one(users, {
-    fields: [contacts.userId],
+    fields: [videoComments.userId],
     references: [users.id],
   }),
-  contact: one(users, {
-    fields: [contacts.contactId],
+}));
+
+export const broadcastsRelations = relations(broadcasts, ({ one }) => ({
+  host: one(users, {
+    fields: [broadcasts.hostId],
+    references: [users.id],
+  }),
+}));
+
+export const followsRelations = relations(follows, ({ one }) => ({
+  follower: one(users, {
+    fields: [follows.followerId],
+    references: [users.id],
+  }),
+  following: one(users, {
+    fields: [follows.followingId],
     references: [users.id],
   }),
 }));
 
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
-export const insertRoomSchema = createInsertSchema(rooms);
-export const selectRoomSchema = createSelectSchema(rooms);
+export const insertVideoSchema = createInsertSchema(videos);
+export const selectVideoSchema = createSelectSchema(videos);
+export const insertBroadcastSchema = createInsertSchema(broadcasts);
+export const selectBroadcastSchema = createSelectSchema(broadcasts);
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type Room = typeof rooms.$inferSelect;
-export type NewRoom = typeof rooms.$inferInsert;
-export type Call = typeof calls.$inferSelect;
-export type Contact = typeof contacts.$inferSelect;
-export type RoomParticipant = typeof roomParticipants.$inferSelect;
+export type Video = typeof videos.$inferSelect;
+export type NewVideo = typeof videos.$inferInsert;
+export type VideoLike = typeof videoLikes.$inferSelect;
+export type VideoComment = typeof videoComments.$inferSelect;
+export type Broadcast = typeof broadcasts.$inferSelect;
+export type NewBroadcast = typeof broadcasts.$inferInsert;
+export type Follow = typeof follows.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
+export type VideoSave = typeof videoSaves.$inferSelect;
+export type WatchHistory = typeof watchHistory.$inferSelect;

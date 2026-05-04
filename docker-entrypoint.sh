@@ -1,12 +1,20 @@
 #!/bin/bash
-echo "Waiting for database to be ready..."
-while ! nc -z postgres 5432; do
+set -e
+
+echo "[entrypoint] Waiting for database at ${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}..."
+ATTEMPTS=0
+until nc -z "${POSTGRES_HOST:-postgres}" "${POSTGRES_PORT:-5432}"; do
+  ATTEMPTS=$((ATTEMPTS + 1))
+  if [ "$ATTEMPTS" -ge 60 ]; then
+    echo "[entrypoint] Database did not become reachable in time."
+    exit 1
+  fi
   sleep 1
 done
-echo "Database is ready!"
+echo "[entrypoint] Database is reachable."
 
-echo "Pushing database schema..."
-npm run db:push
+echo "[entrypoint] Applying migrations..."
+npm run db:migrate
 
-echo "Starting application..."
-npm run start
+echo "[entrypoint] Starting application..."
+exec npm run start
