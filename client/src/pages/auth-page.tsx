@@ -68,12 +68,23 @@ export default function AuthPage() {
       if (isLogin) {
         const parsed = loginSchema.safeParse(form);
         if (!parsed.success) {
-          toast({ variant: "destructive", title: "Invalid input", description: "Check your credentials" });
+          toast({
+            variant: "destructive",
+            title: "Invalid input",
+            description: "Check your credentials",
+          });
           return;
         }
-        const r = await login({ username: form.username, password: form.password });
+        const r = await login({
+          username: form.username,
+          password: form.password,
+        });
         if (!r.ok) {
-          toast({ variant: "destructive", title: "Login failed", description: r.message });
+          toast({
+            variant: "destructive",
+            title: "Login failed",
+            description: r.message,
+          });
           return;
         }
         toast({ title: "Welcome back!", description: "You're signed in." });
@@ -89,13 +100,24 @@ export default function AuthPage() {
         }
         const r = await registerUser(form);
         if (!r.ok) {
-          toast({ variant: "destructive", title: "Sign-up failed", description: r.message });
+          toast({
+            variant: "destructive",
+            title: "Sign-up failed",
+            description: r.message,
+          });
           return;
         }
-        toast({ title: "Welcome to Lumen!", description: "Your account is ready." });
+        toast({
+          title: "Welcome to Lumen!",
+          description: "Your account is ready.",
+        });
       }
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Error", description: err?.message ?? "Unexpected error" });
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err?.message ?? "Unexpected error",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -127,16 +149,31 @@ export default function AuthPage() {
             Go <span className="gradient-text">live.</span>
           </h1>
           <p className="text-zinc-400 text-lg">
-            Upload videos, broadcast live in seconds, and connect with creators across the globe.
+            Upload videos, broadcast live in seconds, and connect with creators
+            across the globe.
           </p>
           <div className="space-y-3 pt-4">
-            <Feature icon={<Upload className="h-4 w-4" />} title="Upload videos" desc="Share clips up to several minutes long." />
-            <Feature icon={<Radio className="h-4 w-4" />} title="Go live instantly" desc="Stream from your camera with one click." />
-            <Feature icon={<Heart className="h-4 w-4" />} title="Build a following" desc="Likes, comments, and a real-time feed." />
+            <Feature
+              icon={<Upload className="h-4 w-4" />}
+              title="Upload videos"
+              desc="Share clips up to several minutes long."
+            />
+            <Feature
+              icon={<Radio className="h-4 w-4" />}
+              title="Go live instantly"
+              desc="Stream from your camera with one click."
+            />
+            <Feature
+              icon={<Heart className="h-4 w-4" />}
+              title="Build a following"
+              desc="Likes, comments, and a real-time feed."
+            />
           </div>
         </div>
 
-        <p className="text-xs text-zinc-500">© Lumen — share something today.</p>
+        <p className="text-xs text-zinc-500">
+          © Lumen — share something today.
+        </p>
       </div>
 
       {/* Right – form */}
@@ -154,7 +191,9 @@ export default function AuthPage() {
               {isLogin ? "Welcome back" : "Create your account"}
             </h2>
             <p className="text-sm text-zinc-400 mt-1">
-              {isLogin ? "Sign in to keep watching." : "Join in less than a minute."}
+              {isLogin
+                ? "Sign in to keep watching."
+                : "Join in less than a minute."}
             </p>
 
             {anyProvider && (
@@ -187,7 +226,10 @@ export default function AuthPage() {
               </>
             )}
 
-            <form onSubmit={onSubmit} className={anyProvider ? "mt-6 space-y-4" : "mt-6 space-y-4"}>
+            <form
+              onSubmit={onSubmit}
+              className={anyProvider ? "mt-6 space-y-4" : "mt-6 space-y-4"}
+            >
               <Field label="Username">
                 <Input
                   name="username"
@@ -242,7 +284,9 @@ export default function AuthPage() {
                 disabled={isSubmitting}
                 className="w-full h-11 rounded-xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-400 hover:opacity-90 border-0 font-semibold shadow-lg shadow-fuchsia-500/30"
               >
-                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                {isSubmitting && (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                )}
                 {isLogin ? "Sign in" : "Create account"}
               </Button>
 
@@ -252,7 +296,9 @@ export default function AuthPage() {
                 className="w-full text-sm text-zinc-400 hover:text-white transition"
                 disabled={isSubmitting}
               >
-                {isLogin ? "New here? Create an account →" : "Already have an account? Sign in →"}
+                {isLogin
+                  ? "New here? Create an account →"
+                  : "Already have an account? Sign in →"}
               </button>
               {isLogin && (
                 <a
@@ -270,16 +316,32 @@ export default function AuthPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">{label}</span>
+      <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+        {label}
+      </span>
       <div className="mt-1.5">{children}</div>
     </label>
   );
 }
 
-function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+function Feature({
+  icon,
+  title,
+  desc,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+}) {
   return (
     <div className="flex items-start gap-3">
       <span className="mt-0.5 grid place-items-center h-8 w-8 rounded-lg bg-white/5 border border-white/10 text-violet-300">

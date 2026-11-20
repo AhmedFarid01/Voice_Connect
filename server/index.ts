@@ -44,7 +44,7 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    console.error("[server] request failed:", err);
   });
 
   // importantly only setup vite in development and after
@@ -56,10 +56,30 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client
-  const PORT = 5000;
-  server.listen(PORT, "0.0.0.0", () => {
-    log(`serving on port ${PORT}`);
-  });
+  // Serve the API and client together, falling back if the preferred port is busy.
+  const preferredPort = Number(process.env.PORT) || 5000;
+  const maxPort = preferredPort + 10;
+
+  const listen = (port: number) => {
+    const onError = (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE" && port < maxPort) {
+        listen(port + 1);
+        return;
+      }
+
+      console.error(
+        `[server] unable to listen on port ${port}:`,
+        error.message,
+      );
+      process.exitCode = 1;
+    };
+
+    server.once("error", onError);
+    server.listen(port, "0.0.0.0", () => {
+      server.off("error", onError);
+      log(`serving on port ${port}`);
+    });
+  };
+
+  listen(preferredPort);
 })();
